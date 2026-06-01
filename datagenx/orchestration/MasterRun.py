@@ -133,6 +133,162 @@ def _sql_string_literal(value):
     return "'" + str(value).replace("\\", "\\\\").replace("'", "''") + "'"
 
 
+def _histogram_estimated_ndv(histogram):
+    if not histogram:
+        return None
+    buckets = histogram.get("buckets") or []
+    hist_type = histogram.get("histogram-type")
+    if hist_type == "equi-height":
+        total = 0
+        for bucket in buckets:
+            if len(bucket) >= 4 and bucket[3] is not None:
+                try:
+                    total += int(bucket[3])
+                except (TypeError, ValueError):
+                    return None
+        return total or None
+    if hist_type == "singleton":
+        return len(buckets) or None
+    return None
+
+
+def _frequency_shape_groups(cursor, schema, table, column):
+    cursor.execute(f"""
+        SELECT frequency, COUNT(*) AS value_count
+        FROM (
+            SELECT COUNT(*) AS frequency
+            FROM `{schema}`.`{table}`
+            WHERE `{column}` IS NOT NULL
+            GROUP BY `{column}`
+        ) grouped
+        GROUP BY frequency
+        ORDER BY frequency
+    """)
+    return [(int(freq), int(value_count)) for freq, value_count in cursor.fetchall()]
+
+
+def _frequency_shape_diff_from_groups(source_groups, target_groups):
+    source_total = sum(freq * value_count for freq, value_count in source_groups)
+    target_total = sum(freq * value_count for freq, value_count in target_groups)
+    if source_total <= 0 or target_total <= 0:
+        return 1.0
+
+    source_sorted = sorted(source_groups, key=lambda row: row[0], reverse=True)
+    target_sorted = sorted(target_groups, key=lambda row: row[0], reverse=True)
+    i = j = 0
+    source_remaining = source_sorted[0][1] if source_sorted else 0
+    target_remaining = target_sorted[0][1] if target_sorted else 0
+    distance = 0.0
+
+    while i < len(source_sorted) or j < len(target_sorted):
+        source_freq = source_sorted[i][0] if i < len(source_sorted) else 0
+        target_freq = target_sorted[j][0] if j < len(target_sorted) else 0
+        source_count = source_remaining if i < len(source_sorted) else float("inf")
+        target_count = target_remaining if j < len(target_sorted) else float("inf")
+        take = min(source_count, target_count)
+
+        source_prob = source_freq / source_total if i < len(source_sorted) else 0.0
+        target_prob = target_freq / target_total if j < len(target_sorted) else 0.0
+        distance += take * abs(source_prob - target_prob)
+
+        if i < len(source_sorted):
+            source_remaining -= take
+            if source_remaining == 0:
+                i += 1
+                if i < len(source_sorted):
+                    source_remaining = source_sorted[i][1]
+        if j < len(target_sorted):
+            target_remaining -= take
+            if target_remaining == 0:
+                j += 1
+                if j < len(target_sorted):
+                    target_remaining = target_sorted[j][1]
+
+    return 0.5 * distance
+
+
+def _unique_cardinality_shape_diff(cursor, table, column):
+    counts = []
+    for schema in (SOURCE_SCHEMA, TARGET_SCHEMA):
+        cursor.execute(f"""
+            SELECT COUNT(*) AS rows_total, COUNT(DISTINCT `{column}`) AS distinct_total
+            FROM `{schema}`.`{table}`
+        """)
+        rows_total, distinct_total = cursor.fetchone()
+        counts.append((int(rows_total or 0), int(distinct_total or 0)))
+
+    (source_rows, source_distinct), (target_rows, target_distinct) = counts
+    if (
+        source_rows == target_rows
+        and source_rows > 0
+        and source_distinct == source_rows
+        and target_distinct == target_rows
+    ):
+        return 0.0
+    return None
+
+
+def _apply_tidb_exact_frequency_histogram_fallback(cursor, table, hist_results, src_hist, tgt_hist):
+    """Downgrade TiDB bucket-layout false positives using exact count shapes.
+
+    TiDB may split optimizer histogram buckets differently when the source and
+    generated domains use different synthetic value ranges, even if the
+    per-value frequency distribution is identical.  For low-NDV columns, compare
+    only grouped counts, never source literals.
+    """
+    if DB_TYPE != "tidb":
+        return hist_results
+
+    max_distinct = int(os.environ.get("DATAGENX_HISTOGRAM_EXACT_SHAPE_MAX_DISTINCT", "2000000"))
+    adjusted = []
+    for col, diff, reason in hist_results:
+        if diff < 0.05:
+            adjusted.append((col, diff, reason))
+            continue
+
+        try:
+            unique_diff = _unique_cardinality_shape_diff(cursor, table, col)
+        except Exception as e:
+            print(f"      Note: exact unique cardinality fallback unavailable for {table}.{col}: {e}")
+            unique_diff = None
+        if unique_diff is not None:
+            adjusted.append((
+                col,
+                unique_diff,
+                f"{reason}; exact unique cardinality diff = {unique_diff:.5f} (TiDB bucket fallback)",
+            ))
+            continue
+
+        ndv_values = [
+            _histogram_estimated_ndv(src_hist.get(col)),
+            _histogram_estimated_ndv(tgt_hist.get(col)),
+        ]
+        ndv_values = [value for value in ndv_values if value is not None]
+        if not ndv_values or max(ndv_values) > max_distinct:
+            adjusted.append((col, diff, reason))
+            continue
+
+        try:
+            source_groups = _frequency_shape_groups(cursor, SOURCE_SCHEMA, table, col)
+            target_groups = _frequency_shape_groups(cursor, TARGET_SCHEMA, table, col)
+            exact_diff = _frequency_shape_diff_from_groups(source_groups, target_groups)
+        except Exception as e:
+            print(f"      Note: exact frequency fallback unavailable for {table}.{col}: {e}")
+            adjusted.append((col, diff, reason))
+            continue
+
+        if exact_diff < 0.05:
+            adjusted.append((
+                col,
+                exact_diff,
+                f"{reason}; exact frequency shape diff = {exact_diff:.5f} (TiDB bucket fallback)",
+            ))
+        else:
+            adjusted.append((col, diff, reason))
+
+    return adjusted
+
+
 # ----------------------------------------------------------------
 # 1. Setup
 # ----------------------------------------------------------------
@@ -1289,6 +1445,9 @@ def step_c_create_insert_validate(cursor, table):
 
         if src_hist and tgt_hist:
             hist_results = compare_histograms(src_hist, tgt_hist)
+            hist_results = _apply_tidb_exact_frequency_histogram_fallback(
+                cursor, table, hist_results, src_hist, tgt_hist
+            )
             hist_critical = report_histogram_comparison(hist_results, indexed_cols, column_types, VERBOSE)
             if hist_critical:
                 hist_ok = False

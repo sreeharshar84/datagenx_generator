@@ -650,9 +650,11 @@ class TiDBExtractor(SchemaExtractor):
             _safe_int(row.get("count"), default=0)
             for row in rows
         ]
-        total = sum(counts)
-        if total <= 0:
+        topn_total = sum(counts)
+        if topn_total <= 0:
             return []
+        row_count = self.get_table_row_count(table)
+        total = row_count if row_count and row_count > 0 else topn_total
 
         entries = []
         for ordinal, count in enumerate(counts, start=1):

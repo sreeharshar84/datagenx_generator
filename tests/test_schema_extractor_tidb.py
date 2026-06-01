@@ -101,6 +101,21 @@ class FakeTopNCursor(FakeCursor):
             super().execute(sql, params)
 
 
+class FakeNativeTopNCursor(FakeTopNCursor):
+    def execute(self, sql, params=None):
+        if sql.startswith("SHOW STATS_META"):
+            self.executed.append((sql, params))
+            self.column_names = [
+                "Db_name", "Table_name", "Partition_name", "Update_time",
+                "Modify_count", "Row_count", "Last_analyze_time",
+            ]
+            self._rows = [
+                ("test", "orders", "", None, 0, 10, None),
+            ]
+            return
+        super().execute(sql, params)
+
+
 class FakePartialStatsCursor(FakeCursor):
     def execute(self, sql, params=None):
         self.executed.append((sql, params))
@@ -182,6 +197,21 @@ class TiDBExtractorTest(unittest.TestCase):
 
         self.assertEqual(histogram["histogram-type"], "singleton")
         self.assertEqual(histogram["buckets"], [[1, 0.75], [2, 1.0]])
+
+    def test_native_topn_uses_table_row_probability_mass_without_values(self):
+        extractor = TiDBExtractor("127.0.0.1", "root", "", "test")
+        extractor.cursor = FakeNativeTopNCursor()
+
+        entries = extractor.get_column_topn("orders", "o_status")
+
+        self.assertEqual([entry.ordinal for entry in entries], [1, 2])
+        self.assertEqual([entry.count for entry in entries], [3, 1])
+        self.assertEqual([entry.frequency for entry in entries], [0.3, 0.1])
+        self.assertFalse(any(
+            "SECRET" in str(value)
+            for entry in entries
+            for value in entry.__dict__.values()
+        ))
 
     def test_column_cardinalities_do_not_exact_scan_missing_tidb_stats(self):
         extractor = TiDBExtractor("127.0.0.1", "root", "", "test")

@@ -14,6 +14,9 @@ RUN_PROFILE="${RUN_PROFILE:-all}"
 TPCH_SCALE_FACTOR="${TPCH_SCALE_FACTOR:-10}"
 TPCDS_SCALE_FACTOR="${TPCDS_SCALE_FACTOR:-10}"
 ARTIFACT_PREFIX="${ARTIFACT_PREFIX:-full-sf${TPCH_SCALE_FACTOR}}"
+SCHEMA_NAMESPACE="${SCHEMA_NAMESPACE:-}"
+REUSE_SOURCE_FILES="${REUSE_SOURCE_FILES:-0}"
+REUSE_LOADED_SOURCE_SCHEMA="${REUSE_LOADED_SOURCE_SCHEMA:-0}"
 TEMPLATE_FILE="${TEMPLATE_FILE:-tests/cloudformation/tidb-full-sf10.yml}"
 TIDB_ENV_FILE="${TIDB_ENV_FILE:-.env}"
 TIDB_ENV_PARAM_NAME="${TIDB_ENV_PARAM_NAME:-/datagenx/$STACK_NAME/tidb-env}"
@@ -121,11 +124,23 @@ start_remote_run() {
     local bucket="$2"
     local tidb_env_param_name="$3"
 
-    python3 - "$SSM_PARAMS" "$bucket" "$AWS_REGION" "$RUN_PROFILE" "$TPCH_SCALE_FACTOR" "$TPCDS_SCALE_FACTOR" "$ARTIFACT_PREFIX" "$tidb_env_param_name" <<'PY'
+    python3 - "$SSM_PARAMS" "$bucket" "$AWS_REGION" "$RUN_PROFILE" "$TPCH_SCALE_FACTOR" "$TPCDS_SCALE_FACTOR" "$ARTIFACT_PREFIX" "$SCHEMA_NAMESPACE" "$REUSE_SOURCE_FILES" "$REUSE_LOADED_SOURCE_SCHEMA" "$tidb_env_param_name" <<'PY'
 import json
 import sys
 
-path, bucket, region, profile, tpch_sf, tpcds_sf, artifact_prefix, tidb_env_param_name = sys.argv[1:]
+(
+    path,
+    bucket,
+    region,
+    profile,
+    tpch_sf,
+    tpcds_sf,
+    artifact_prefix,
+    schema_namespace,
+    reuse_source_files,
+    reuse_loaded_source_schema,
+    tidb_env_param_name,
+) = sys.argv[1:]
 commands = [
     "set -euo pipefail",
     "mkdir -p /opt/datagenx-run/work /opt/datagenx-run/logs /opt/datagenx-run/results",
@@ -155,6 +170,9 @@ commands = [
     "export START_LOCAL_TIDB='0'\n"
     "export ENABLE_TIFLASH='1'\n"
     "export TIFLASH_REPLICA_COUNT='3'\n"
+    f"export SCHEMA_NAMESPACE='{schema_namespace}'\n"
+    f"export REUSE_SOURCE_FILES='{reuse_source_files}'\n"
+    f"export REUSE_LOADED_SOURCE_SCHEMA='{reuse_loaded_source_schema}'\n"
     f"export TPCH_SCALE_FACTOR='{tpch_sf}'\n"
     f"export TPCDS_SCALE_FACTOR='{tpcds_sf}'\n"
     f"exec tests/cloudformation/run_tidb_full_sf10_remote.sh '{profile}'\n"
@@ -211,6 +229,7 @@ TiDBEnvParam:   $TIDB_ENV_PARAM_NAME
 SSMCommandId:   $command_id
 RunProfile:     $RUN_PROFILE
 ArtifactPrefix: $ARTIFACT_PREFIX
+SchemaNamespace: ${SCHEMA_NAMESPACE:-<default>}
 
 Check remote bootstrap command:
   aws ssm get-command-invocation --region $AWS_REGION --command-id $command_id --instance-id $instance_id

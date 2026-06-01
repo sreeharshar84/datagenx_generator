@@ -23,6 +23,7 @@ TPCH_TARGET_SCHEMA="${TPCH_TARGET_SCHEMA:-}"
 TPCDS_SOURCE_SCHEMA="${TPCDS_SOURCE_SCHEMA:-}"
 TPCDS_TARGET_SCHEMA="${TPCDS_TARGET_SCHEMA:-}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%d%H%M%S)}"
+SCHEMA_NAMESPACE="${SCHEMA_NAMESPACE:-}"
 
 START_LOCAL_TIDB="${START_LOCAL_TIDB:-0}"
 TIDB_IMAGE="${TIDB_IMAGE:-pingcap/tidb:v8.5.6}"
@@ -35,6 +36,7 @@ TIDB_ENV_FILE="${TIDB_ENV_FILE:-$REPO_DIR/.env}"
 TIDB_BENCH_REPO="${TIDB_BENCH_REPO:-https://github.com/pingcap/tidb-bench.git}"
 ARTIFACT_BUCKET="${ARTIFACT_BUCKET:-}"
 ARTIFACT_PREFIX="${ARTIFACT_PREFIX:-results}"
+GENERATED_DIR="${GENERATED_DIR:-$BASE_DIR/generated/$ARTIFACT_PREFIX}"
 
 DBGEN_CRATE_VERSION="${DBGEN_CRATE_VERSION:-0.8.0}"
 DATAGENX_DBGEN_ROOT="${DATAGENX_DBGEN_ROOT:-$BASE_DIR/datagenx-dbgen}"
@@ -54,7 +56,7 @@ LOAD_RETRY_ATTEMPTS="${LOAD_RETRY_ATTEMPTS:-3}"
 
 MYSQL=()
 
-mkdir -p "$BASE_DIR" "$BENCH_DIR" "$RESULTS_DIR" "$LOG_DIR"
+mkdir -p "$BASE_DIR" "$BENCH_DIR" "$RESULTS_DIR" "$LOG_DIR" "$GENERATED_DIR"
 
 sync_artifacts() {
     if [[ -z "$ARTIFACT_BUCKET" ]]; then
@@ -224,7 +226,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 env_path = Path(sys.argv[1])
-allowed = re.compile(r"^(TIDB|DB|DATAGENX|SOURCE_SCHEMA|TARGET_SCHEMA|TPCH|TPCDS|TIFLASH)_")
+allowed = re.compile(r"^(TIDB|DB|DATAGENX|SOURCE_SCHEMA|TARGET_SCHEMA|TPCH|TPCDS|TIFLASH|SCHEMA)_")
 for key, value in dotenv_values(env_path).items():
     if value is None:
         continue
@@ -239,10 +241,15 @@ PY
     TIDB_PASSWORD="${TIDB_PASSWORD:-${DB_PASSWORD:-${DATAGENX_DB_PASSWORD:-}}}"
     TIDB_DATABASE="${TIDB_DATABASE:-${DB_DATABASE:-${DATAGENX_SOURCE_SCHEMA:-test}}}"
 
-    TPCH_SOURCE_SCHEMA="${TPCH_SOURCE_SCHEMA:-${TIDB_DATABASE}_tpch_${TPCH_SCALE_LABEL}_source}"
-    TPCH_TARGET_SCHEMA="${TPCH_TARGET_SCHEMA:-${TIDB_DATABASE}_tpch_${TPCH_SCALE_LABEL}_datagenx_${RUN_ID}}"
-    TPCDS_SOURCE_SCHEMA="${TPCDS_SOURCE_SCHEMA:-${TIDB_DATABASE}_tpcds_${TPCDS_SCALE_LABEL}_source}"
-    TPCDS_TARGET_SCHEMA="${TPCDS_TARGET_SCHEMA:-${TIDB_DATABASE}_tpcds_${TPCDS_SCALE_LABEL}_datagenx_${RUN_ID}}"
+    local schema_prefix="$TIDB_DATABASE"
+    if [[ -n "$SCHEMA_NAMESPACE" ]]; then
+        schema_prefix="${TIDB_DATABASE}_${SCHEMA_NAMESPACE}"
+    fi
+
+    TPCH_SOURCE_SCHEMA="${TPCH_SOURCE_SCHEMA:-${schema_prefix}_tpch_${TPCH_SCALE_LABEL}_source}"
+    TPCH_TARGET_SCHEMA="${TPCH_TARGET_SCHEMA:-${schema_prefix}_tpch_${TPCH_SCALE_LABEL}_datagenx_${RUN_ID}}"
+    TPCDS_SOURCE_SCHEMA="${TPCDS_SOURCE_SCHEMA:-${schema_prefix}_tpcds_${TPCDS_SCALE_LABEL}_source}"
+    TPCDS_TARGET_SCHEMA="${TPCDS_TARGET_SCHEMA:-${schema_prefix}_tpcds_${TPCDS_SCALE_LABEL}_datagenx_${RUN_ID}}"
 
     if [[ -z "$TIDB_HOST" ]]; then
         echo "ERROR: TIDB_HOST is required" >&2
@@ -284,7 +291,7 @@ setup_datagenx_dbgen() {
     mkdir -p "$build_dir"
     cd "$build_dir"
 
-    curl -sSL "https://crates.io/api/v1/crates/dbgen/$DBGEN_CRATE_VERSION/download" \
+    curl -fL "https://static.crates.io/crates/dbgen/dbgen-$DBGEN_CRATE_VERSION.crate" \
         -o dbgen.crate
     tar -xzf dbgen.crate --strip-components=1
 
@@ -604,6 +611,17 @@ load_tpcds_source() {
     local tools_dir="$BENCH_DIR/tidb-bench/tpcds/tools"
     cd "$tools_dir"
 
+    if [[ "$REUSE_LOADED_SOURCE_SCHEMA" == "1" ]] && schema_has_base_tables "$TPCDS_SOURCE_SCHEMA" 24; then
+        log "Reusing existing loaded TPC-DS source schema: $TPCDS_SOURCE_SCHEMA"
+        run_sql "ANALYZE TABLE \`$TPCDS_SOURCE_SCHEMA\`.\`call_center\`, \`$TPCDS_SOURCE_SCHEMA\`.\`catalog_page\`, \`$TPCDS_SOURCE_SCHEMA\`.\`catalog_returns\`, \`$TPCDS_SOURCE_SCHEMA\`.\`catalog_sales\`, \`$TPCDS_SOURCE_SCHEMA\`.\`customer\`, \`$TPCDS_SOURCE_SCHEMA\`.\`customer_address\`, \`$TPCDS_SOURCE_SCHEMA\`.\`customer_demographics\`, \`$TPCDS_SOURCE_SCHEMA\`.\`date_dim\`, \`$TPCDS_SOURCE_SCHEMA\`.\`household_demographics\`, \`$TPCDS_SOURCE_SCHEMA\`.\`income_band\`, \`$TPCDS_SOURCE_SCHEMA\`.\`inventory\`, \`$TPCDS_SOURCE_SCHEMA\`.\`item\`, \`$TPCDS_SOURCE_SCHEMA\`.\`promotion\`, \`$TPCDS_SOURCE_SCHEMA\`.\`reason\`, \`$TPCDS_SOURCE_SCHEMA\`.\`ship_mode\`, \`$TPCDS_SOURCE_SCHEMA\`.\`store\`, \`$TPCDS_SOURCE_SCHEMA\`.\`store_returns\`, \`$TPCDS_SOURCE_SCHEMA\`.\`store_sales\`, \`$TPCDS_SOURCE_SCHEMA\`.\`time_dim\`, \`$TPCDS_SOURCE_SCHEMA\`.\`warehouse\`, \`$TPCDS_SOURCE_SCHEMA\`.\`web_page\`, \`$TPCDS_SOURCE_SCHEMA\`.\`web_returns\`, \`$TPCDS_SOURCE_SCHEMA\`.\`web_sales\`, \`$TPCDS_SOURCE_SCHEMA\`.\`web_site\` ALL COLUMNS"
+        apply_tiflash_replica "$TPCDS_SOURCE_SCHEMA"
+        if [[ "$CLEAN_SOURCE_FILES_AFTER_LOAD" == "1" ]]; then
+            log "Cleaning TPC-DS raw .dat files after source schema reuse"
+            rm -f "$tools_dir"/*.dat
+        fi
+        return
+    fi
+
     if [[ "$REUSE_SOURCE_FILES" == "1" ]] && tpcds_source_files_ready "$tools_dir"; then
         log "Reusing existing TPC-DS SF=$TPCDS_SCALE_FACTOR .dat files"
     else
@@ -732,8 +750,8 @@ run_datagenx_tpch() {
 
         PYTHONUNBUFFERED=1 \
         DBGEN_BINARY="$DATAGENX_DBGEN_BINARY" \
-        DBGEN_FILES_DIR="$BASE_DIR/generated/tpch/dbgen_files" \
-        DBGEN_TMP_OUT_DIR="$BASE_DIR/generated/tpch/dbgen_tmp_out" \
+        DBGEN_FILES_DIR="$GENERATED_DIR/tpch/dbgen_files" \
+        DBGEN_TMP_OUT_DIR="$GENERATED_DIR/tpch/dbgen_tmp_out" \
         python3 MasterRun.py \
             --db-type tidb \
             --host "$TIDB_HOST" \
@@ -762,12 +780,16 @@ run_datagenx_tpch() {
 
     if [[ "$CLEAN_GENERATED_FILES_AFTER_LOAD" == "1" ]]; then
         log "Cleaning TPC-H generated CSV files after load"
-        rm -rf "$BASE_DIR/generated/tpch/dbgen_tmp_out"
+        rm -rf "$GENERATED_DIR/tpch/dbgen_tmp_out"
     fi
 }
 
-generate_tpch_validation_report() {
-    local output="$RESULTS_DIR/TPCH_TIDB_${TPCH_SCALE_LABEL^^}.html"
+generate_validation_report() {
+    local benchmark="$1"
+    local scale_label="$2"
+    local source_schema="$3"
+    local target_schema="$4"
+    local output="$RESULTS_DIR/${benchmark^^}_TIDB_${scale_label^^}.html"
     local password_arg=()
     if [[ -z "$TIDB_PASSWORD" ]]; then
         password_arg=("--password=")
@@ -783,15 +805,19 @@ generate_tpch_validation_report() {
         --port "$TIDB_PORT" \
         --user "$TIDB_USER" \
         "${password_arg[@]}" \
-        --source-schema "$TPCH_SOURCE_SCHEMA" \
-        --target-schema "$TPCH_TARGET_SCHEMA" \
+        --source-schema "$source_schema" \
+        --target-schema "$target_schema" \
         --output "$output" \
         --tidb-overlap-strategy mpp \
         --overlap-chunk-rows 500000
 }
 
-collect_tpch_topn_summary() {
-    local output="$RESULTS_DIR/topn_tpch_${TPCH_SCALE_LABEL}_tidb_summary.tsv"
+collect_topn_summary() {
+    local benchmark="$1"
+    local scale_label="$2"
+    local source_schema="$3"
+    local target_schema="$4"
+    local output="$RESULTS_DIR/topn_${benchmark}_${scale_label}_tidb_summary.tsv"
     local password_arg=()
     if [[ -z "$TIDB_PASSWORD" ]]; then
         password_arg=("--password=")
@@ -801,7 +827,7 @@ collect_tpch_topn_summary() {
 
     log "Collecting TiDB TopN summary without literal values: $output"
     cd "$REPO_DIR"
-    python3 - "$output" "$TIDB_HOST" "$TIDB_PORT" "$TIDB_USER" "$TIDB_PASSWORD" "$TPCH_SOURCE_SCHEMA" "$TPCH_TARGET_SCHEMA" <<'PY'
+    python3 - "$output" "$TIDB_HOST" "$TIDB_PORT" "$TIDB_USER" "$TIDB_PASSWORD" "$source_schema" "$target_schema" <<'PY'
 import csv
 import sys
 from collections import defaultdict
@@ -897,19 +923,41 @@ run_datagenx_tpcds() {
     log "Running full-size DataGenX target generation for TPC-DS SF=$TPCDS_SCALE_FACTOR"
     cd "$REPO_DIR"
     local status=0
+    local result_file="$RESULTS_DIR/results_tpcds_${TPCDS_SCALE_LABEL}_tidb_full.txt"
+    local password_arg=()
+    if [[ -z "$TIDB_PASSWORD" ]]; then
+        password_arg=("--password=")
+    else
+        password_arg=("--password" "$TIDB_PASSWORD")
+    fi
     set +e
-    START_TIDB=0 \
-    TIDB_HOST="$TIDB_HOST" \
-    TIDB_PORT="$TIDB_PORT" \
-    TIDB_USER="$TIDB_USER" \
-    TIDB_PASSWORD="$TIDB_PASSWORD" \
-    DBGEN_BINARY="$DATAGENX_DBGEN_BINARY" \
-    DBGEN_FILES_DIR="$BASE_DIR/generated/tpcds/dbgen_files" \
-    DBGEN_TMP_OUT_DIR="$BASE_DIR/generated/tpcds/dbgen_tmp_out" \
-    TPCDS_SF10_SOURCE_SCHEMA="$TPCDS_SOURCE_SCHEMA" \
-    TPCDS_SF10_TARGET_SCHEMA="$TPCDS_TARGET_SCHEMA" \
-    TPCDS_SF10_RESULT_FILE="$RESULTS_DIR/results_tpcds_sf10_tidb_full.txt" \
-    bash tests/test_tidb_e2e.sh tpcds-sf10 full
+    (
+        echo "DataGenX TiDB E2E verification"
+        echo "profile=tpcds-${TPCDS_SCALE_LABEL}"
+        echo "label=TPC-DS SF=$TPCDS_SCALE_FACTOR"
+        echo "host=$TIDB_HOST"
+        echo "port=$TIDB_PORT"
+        echo "source=$TPCDS_SOURCE_SCHEMA"
+        echo "target=$TPCDS_TARGET_SCHEMA"
+        echo "rows=match-source"
+        echo ""
+
+        PYTHONUNBUFFERED=1 \
+        DBGEN_BINARY="$DATAGENX_DBGEN_BINARY" \
+        DBGEN_FILES_DIR="$GENERATED_DIR/tpcds/dbgen_files" \
+        DBGEN_TMP_OUT_DIR="$GENERATED_DIR/tpcds/dbgen_tmp_out" \
+        python3 MasterRun.py \
+            --db-type tidb \
+            --host "$TIDB_HOST" \
+            --port "$TIDB_PORT" \
+            --user "$TIDB_USER" \
+            "${password_arg[@]}" \
+            --source-schema "$TPCDS_SOURCE_SCHEMA" \
+            --target-schema "$TPCDS_TARGET_SCHEMA" \
+            --run-validation \
+            --verbose \
+            --compare-histograms
+    ) 2>&1 | tee "$result_file"
     status=$?
     set -e
 
@@ -926,7 +974,7 @@ run_datagenx_tpcds() {
 
     if [[ "$CLEAN_GENERATED_FILES_AFTER_LOAD" == "1" ]]; then
         log "Cleaning TPC-DS generated CSV files after load"
-        rm -rf "$BASE_DIR/generated/tpcds/dbgen_tmp_out"
+        rm -rf "$GENERATED_DIR/tpcds/dbgen_tmp_out"
     fi
 }
 
@@ -943,23 +991,27 @@ main() {
             load_tpch_source
             append_size_report "TPC-H SF=$TPCH_SCALE_FACTOR source loaded" "$TPCH_SOURCE_SCHEMA"
             run_datagenx_tpch
-            generate_tpch_validation_report
-            collect_tpch_topn_summary
+            generate_validation_report "tpch" "$TPCH_SCALE_LABEL" "$TPCH_SOURCE_SCHEMA" "$TPCH_TARGET_SCHEMA"
+            collect_topn_summary "tpch" "$TPCH_SCALE_LABEL" "$TPCH_SOURCE_SCHEMA" "$TPCH_TARGET_SCHEMA"
             ;;
-        tpcds|tpcds-sf10|tpcds_sf10)
+        tpcds|tpcds-sf*|tpcds_sf*)
             load_tpcds_source
             append_size_report "TPC-DS SF=$TPCDS_SCALE_FACTOR source loaded" "$TPCDS_SOURCE_SCHEMA"
             run_datagenx_tpcds
+            generate_validation_report "tpcds" "$TPCDS_SCALE_LABEL" "$TPCDS_SOURCE_SCHEMA" "$TPCDS_TARGET_SCHEMA"
+            collect_topn_summary "tpcds" "$TPCDS_SCALE_LABEL" "$TPCDS_SOURCE_SCHEMA" "$TPCDS_TARGET_SCHEMA"
             ;;
         all)
             load_tpch_source
             append_size_report "TPC-H SF=$TPCH_SCALE_FACTOR source loaded" "$TPCH_SOURCE_SCHEMA"
             run_datagenx_tpch
-            generate_tpch_validation_report
-            collect_tpch_topn_summary
+            generate_validation_report "tpch" "$TPCH_SCALE_LABEL" "$TPCH_SOURCE_SCHEMA" "$TPCH_TARGET_SCHEMA"
+            collect_topn_summary "tpch" "$TPCH_SCALE_LABEL" "$TPCH_SOURCE_SCHEMA" "$TPCH_TARGET_SCHEMA"
             load_tpcds_source
             append_size_report "TPC-DS SF=$TPCDS_SCALE_FACTOR source loaded" "$TPCDS_SOURCE_SCHEMA"
             run_datagenx_tpcds
+            generate_validation_report "tpcds" "$TPCDS_SCALE_LABEL" "$TPCDS_SOURCE_SCHEMA" "$TPCDS_TARGET_SCHEMA"
+            collect_topn_summary "tpcds" "$TPCDS_SCALE_LABEL" "$TPCDS_SOURCE_SCHEMA" "$TPCDS_TARGET_SCHEMA"
             ;;
         *)
             echo "Usage: $0 [tpch|tpcds|all]" >&2

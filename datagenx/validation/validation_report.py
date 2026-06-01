@@ -260,9 +260,65 @@ def get_frequency_counts(cursor, schema, table, column):
     cursor.execute(f"""
         SELECT COUNT(*) AS frequency
         FROM `{schema}`.`{table}`
+        WHERE `{column}` IS NOT NULL
         GROUP BY `{column}`
     """)
     return [int(row[0]) for row in cursor.fetchall()]
+
+
+def get_frequency_count_groups(cursor, schema, table, column):
+    cursor.execute(f"""
+        SELECT frequency, COUNT(*) AS value_count
+        FROM (
+            SELECT COUNT(*) AS frequency
+            FROM `{schema}`.`{table}`
+            WHERE `{column}` IS NOT NULL
+            GROUP BY `{column}`
+        ) grouped
+        GROUP BY frequency
+        ORDER BY frequency DESC
+    """)
+    return [(int(frequency), int(value_count)) for frequency, value_count in cursor.fetchall()]
+
+
+def frequency_group_shape_diff(source_groups, target_groups):
+    source_total = sum(frequency * value_count for frequency, value_count in source_groups)
+    target_total = sum(frequency * value_count for frequency, value_count in target_groups)
+    if source_total <= 0 or target_total <= 0:
+        return 1.0
+
+    source_groups = sorted(source_groups, key=lambda row: row[0], reverse=True)
+    target_groups = sorted(target_groups, key=lambda row: row[0], reverse=True)
+    i = j = 0
+    source_remaining = source_groups[0][1] if source_groups else 0
+    target_remaining = target_groups[0][1] if target_groups else 0
+    distance = 0.0
+
+    while i < len(source_groups) or j < len(target_groups):
+        source_frequency = source_groups[i][0] if i < len(source_groups) else 0
+        target_frequency = target_groups[j][0] if j < len(target_groups) else 0
+        source_count = source_remaining if i < len(source_groups) else float("inf")
+        target_count = target_remaining if j < len(target_groups) else float("inf")
+        take = min(source_count, target_count)
+
+        source_prob = source_frequency / source_total if i < len(source_groups) else 0.0
+        target_prob = target_frequency / target_total if j < len(target_groups) else 0.0
+        distance += take * abs(source_prob - target_prob)
+
+        if i < len(source_groups):
+            source_remaining -= take
+            if source_remaining == 0:
+                i += 1
+                if i < len(source_groups):
+                    source_remaining = source_groups[i][1]
+        if j < len(target_groups):
+            target_remaining -= take
+            if target_remaining == 0:
+                j += 1
+                if j < len(target_groups):
+                    target_remaining = target_groups[j][1]
+
+    return 0.5 * distance
 
 
 def lookup_metric(df, table, column, value_col):
@@ -289,6 +345,18 @@ def lookup_table_rows(df, table, value_col):
     return int(value)
 
 
+def has_matching_unique_shape(source_rows, target_rows, source_distinct, target_distinct):
+    values = (source_rows, target_rows, source_distinct, target_distinct)
+    if any(value is None for value in values):
+        return False
+    return (
+        source_rows == target_rows
+        and source_rows > 0
+        and source_distinct == source_rows
+        and target_distinct == target_rows
+    )
+
+
 def get_histograms(cursor, args, schema, table):
     """Return histograms using the backend abstraction.
 
@@ -312,6 +380,8 @@ def get_histogram_summary(cursor, args, source_schema, target_schema, tables, ro
         indexed_cols = get_indexed_columns(cursor, source_schema, table)
         column_types = get_column_types(cursor, source_schema, table)
         for col in sorted(set(source_hist) | set(target_hist)):
+            col_type = column_types.get(col, "unknown")
+            indexed = col in indexed_cols
             missing_histogram = False
             if col not in source_hist:
                 diff = 1.0
@@ -339,27 +409,54 @@ def get_histogram_summary(cursor, args, source_schema, target_schema, tables, ro
                 target_buckets = len(target_hist[col].get("buckets", []))
                 source_histogram_type = "missing"
                 target_histogram_type = target_hist[col].get("histogram-type", "unknown")
-            if missing_histogram:
+            if diff >= 0.05:
                 source_rows = lookup_table_rows(row_df, table, "source_rows")
                 target_rows = lookup_table_rows(row_df, table, "target_rows")
                 source_distinct = lookup_metric(distinct_df, table, col, "source_distinct")
                 target_distinct = lookup_metric(distinct_df, table, col, "target_distinct")
                 max_rows = max(value for value in (source_rows, target_rows, 0) if value is not None)
                 max_distinct = max(value for value in (source_distinct, target_distinct, 0) if value is not None)
-                if (
-                    max_rows <= args.histogram_fallback_max_rows
-                    and max_distinct <= args.histogram_fallback_max_distinct
-                ):
-                    source_counts = get_frequency_counts(cursor, source_schema, table, col)
-                    target_counts = get_frequency_counts(cursor, target_schema, table, col)
-                    diff = frequency_shape_diff(source_counts, target_counts)
-                    source_buckets = len(source_counts)
-                    target_buckets = len(target_counts)
-                    source_histogram_type = "frequency-shape"
-                    target_histogram_type = "frequency-shape"
-                    reason = "histogram missing; exact frequency shape fallback"
-            col_type = column_types.get(col, "unknown")
-            indexed = col in indexed_cols
+                if has_matching_unique_shape(source_rows, target_rows, source_distinct, target_distinct):
+                    diff = 0.0
+                    source_buckets = int(source_distinct)
+                    target_buckets = int(target_distinct)
+                    source_histogram_type = "unique-cardinality"
+                    target_histogram_type = "unique-cardinality"
+                    if missing_histogram:
+                        reason = "histogram missing; exact unique cardinality fallback"
+                    else:
+                        reason = "optimizer histogram buckets diverged; exact unique cardinality fallback"
+                critical_histogram = indexed or not (is_string_type(col_type) or is_decimal_type(col_type))
+                effective_max_distinct = args.histogram_fallback_max_distinct
+                if args.db_type == "tidb" and critical_histogram:
+                    effective_max_distinct = max(
+                        effective_max_distinct,
+                        args.tidb_histogram_fallback_max_distinct,
+                    )
+                allow_frequency_fallback = (
+                    max_distinct <= effective_max_distinct
+                    and (
+                        max_rows <= args.histogram_fallback_max_rows
+                        or (
+                            args.db_type == "tidb"
+                            and (not missing_histogram or critical_histogram)
+                        )
+                    )
+                )
+                if diff >= 0.05 and allow_frequency_fallback:
+                    source_groups = get_frequency_count_groups(cursor, source_schema, table, col)
+                    target_groups = get_frequency_count_groups(cursor, target_schema, table, col)
+                    fallback_diff = frequency_group_shape_diff(source_groups, target_groups)
+                    if fallback_diff < diff:
+                        diff = fallback_diff
+                        source_buckets = sum(value_count for _frequency, value_count in source_groups)
+                        target_buckets = sum(value_count for _frequency, value_count in target_groups)
+                        source_histogram_type = "frequency-shape"
+                        target_histogram_type = "frequency-shape"
+                        if missing_histogram:
+                            reason = "histogram missing; exact frequency shape fallback"
+                        else:
+                            reason = "optimizer histogram buckets diverged; exact frequency shape fallback"
             if diff < 0.05:
                 status = "PASS"
             elif is_string_type(col_type) and not indexed:
@@ -1243,8 +1340,14 @@ def parse_args():
     parser.add_argument(
         "--histogram-fallback-max-distinct",
         type=int,
-        default=10000,
+        default=100000,
         help="Maximum column NDV for exact frequency-shape fallback when backend histograms are missing.",
+    )
+    parser.add_argument(
+        "--tidb-histogram-fallback-max-distinct",
+        type=int,
+        default=2000000,
+        help="TiDB-only NDV ceiling for exact frequency-shape fallback on critical histogram columns.",
     )
     parser.add_argument(
         "--tidb-mem-quota-query",
