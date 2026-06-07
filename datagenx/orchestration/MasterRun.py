@@ -319,6 +319,119 @@ def prepare_target_schema(cursor, target_schema, tables_to_drop=None):
         print(f"Created schema `{target_schema}`.")
 
 
+def _project_root():
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def _benchmark_fk_script_for_tables(tables):
+    table_names = {table.lower() for table in tables}
+    if {"lineitem", "orders", "partsupp", "customer", "supplier"}.issubset(table_names):
+        return "TPC-H", os.path.join(_project_root(), "scripts", "tpch_fk.sql")
+    if {"date_dim", "item", "customer", "store_sales", "catalog_sales", "web_sales"}.issubset(table_names):
+        return "TPC-DS", os.path.join(_project_root(), "scripts", "tpcds_fk.sql")
+    return None, None
+
+
+def _strip_sql_comments(statement):
+    lines = []
+    for line in statement.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
+    """Apply benchmark FK constraints after all target tables are loaded.
+
+    Source benchmark loaders may not create physical FK metadata, especially for
+    TPC-DS. Generation and validation can use fallback relationships, but adding
+    physical constraints to the generated target makes information_schema reflect
+    the same relationships. The SQL scripts are intentionally applied only after
+    all tables have been loaded.
+    """
+    if DB_TYPE != "mysql":
+        return
+    if TABLES_FILTER:
+        print("Skipping benchmark FK script for partial table run.")
+        return
+
+    benchmark, script_path = _benchmark_fk_script_for_tables(loaded_tables)
+    if not benchmark or not script_path or not os.path.exists(script_path):
+        return
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = %s
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    """, (target_schema,))
+    existing_fk_count = cursor.fetchone()[0]
+    if existing_fk_count:
+        print(
+            f"Skipping {benchmark} FK script for `{target_schema}`; "
+            f"{existing_fk_count} physical FK constraint(s) already exist."
+        )
+        return
+
+    with open(script_path) as f:
+        sql = f.read()
+
+    statements = [
+        _strip_sql_comments(stmt)
+        for stmt in sql.split(";")
+    ]
+    statements = [stmt for stmt in statements if stmt]
+
+    applied = 0
+    skipped = 0
+    print(f"Applying {benchmark} FK constraints to `{target_schema}` from {script_path}...")
+
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+    for statement in statements:
+        if statement.upper().startswith("SET "):
+            cursor.execute(statement)
+            continue
+
+        match = re.search(
+            r"\bADD\s+CONSTRAINT\s+`?([A-Za-z0-9_]+)`?",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            constraint_name = match.group(1)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = %s
+                  AND CONSTRAINT_NAME = %s
+                  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+            """, (target_schema, constraint_name))
+            if cursor.fetchone()[0]:
+                skipped += 1
+                continue
+
+        statement = re.sub(
+            r"^\s*ALTER\s+TABLE\s+`?([A-Za-z0-9_]+)`?",
+            rf"ALTER TABLE `{target_schema}`.`\1`",
+            statement,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        statement = re.sub(
+            r"\bREFERENCES\s+`?([A-Za-z0-9_]+)`?\s*\(",
+            rf"REFERENCES `{target_schema}`.`\1` (",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        cursor.execute(statement)
+        applied += 1
+
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+    print(f"      FK constraints applied: {applied}, skipped existing: {skipped}")
+
+
 # ----------------------------------------------------------------
 # 2. Per-table processing
 # ----------------------------------------------------------------
@@ -1600,6 +1713,24 @@ def main():
         if table_extractor is not extractor and table_extractor:
             table_extractor.close()
         print()
+
+    loaded_tables = [
+        table
+        for table in sorted_tables
+        if results.get(table, {}).get("loaded")
+    ]
+    failed_tables = [
+        table
+        for table in sorted_tables
+        if not results.get(table, {}).get("loaded")
+    ]
+    if failed_tables:
+        print(
+            "Skipping benchmark FK script because these table(s) did not load: "
+            + ", ".join(failed_tables)
+        )
+    else:
+        apply_benchmark_fk_script(cursor, TARGET_SCHEMA, loaded_tables)
 
     # --- Cleanup ---
     cursor.execute("SET FOREIGN_KEY_CHECKS = 1")

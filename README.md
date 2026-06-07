@@ -555,16 +555,31 @@ schema was loaded without physical FK constraints, it falls back to built-in
 TPC-H/TPC-DS relationship definitions and runs orphan checks against both source
 and target schemas.
 
-To attach physical TPC-DS FK metadata after loading a MySQL TPC-DS schema, run:
+`MasterRun.py` applies benchmark FK metadata to the generated target after
+a full MySQL benchmark load. For a full TPC-DS run it applies
+`scripts/tpcds_fk.sql` to the target schema after all tables are created and
+loaded. For a full TPC-H run it similarly applies `scripts/tpch_fk.sql` when the
+target constraints are not already present. Partial `--tables` runs skip this
+step because referenced tables may be absent.
+
+To attach the same physical FK metadata to an already-loaded source schema, use
+the common FK utility:
 
 ```bash
-mysql -u root -p tpcds < scripts/tpcds_fk.sql
-mysql -u root -p tpcds_dbgenx < scripts/tpcds_fk.sql
+/home/hmaduri/myenv/bin/python3 scripts/apply_benchmark_fk.py \
+  --schema tpch_sf001 \
+  --benchmark tpch
+
+/home/hmaduri/myenv/bin/python3 scripts/apply_benchmark_fk.py \
+  --schema tpcds \
+  --benchmark tpcds
 ```
 
-The script disables `FOREIGN_KEY_CHECKS` while adding constraints because loaded
-TPC-DS data may contain `0` sentinel values for unknown/not-applicable dimension
-references.
+Use `--benchmark auto` to infer TPC-H or TPC-DS from table names. The utility
+skips schemas that already have physical FKs unless `--force` is provided. The
+TPC-DS script disables `FOREIGN_KEY_CHECKS` while adding constraints because
+loaded TPC-DS data may contain `0` sentinel values for unknown/not-applicable
+dimension references.
 
 ## Important Behavior
 
