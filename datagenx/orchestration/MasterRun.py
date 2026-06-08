@@ -1735,6 +1735,7 @@ def step_c_create_insert_validate(cursor, table):
             distinct_ok = False
 
     return {
+        "loaded": True,
         "ddl": ddl_ok,
         "rows": rows_ok,
         "histograms": hist_ok,
