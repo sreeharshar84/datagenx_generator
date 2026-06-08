@@ -983,22 +983,46 @@ def build_fk_appendages(cursor, table, extractor=None):
             if distinct_count <= 0:
                 return {}
             min_val = min_val if min_val is not None else 0
-            col_info.append((col, ref_col, distinct_count, min_val))
+            source_distinct = estimated_source_distinct(col)
+            col_info.append((col, ref_col, source_distinct, distinct_count, min_val))
 
         col_info.sort(key=lambda x: x[2], reverse=True)
-        largest_distinct = col_info[0][2]
-        rows_per_largest = max(1, (ref_row_count + largest_distinct - 1) // largest_distinct)
+        _, _, largest_source_distinct, largest_parent_distinct, _ = col_info[0]
+        parent_span = max(
+            1,
+            (largest_source_distinct * ref_row_count + largest_parent_distinct - 1)
+            // largest_parent_distinct,
+        )
+        raw_parent_pos = f"div((rownum-1)*{parent_span},{source_row_count})"
+        parent_pos = raw_parent_pos
+
+        # If a non-leading child FK has a slightly smaller NDV than the parent
+        # key, cap the selected parent positions to keep child-side NDV within
+        # the normal 5% validation threshold while still selecting real parent
+        # key tuples.
+        if len(col_info) == 2:
+            _, _, source_distinct, parent_distinct, _ = col_info[1]
+            cap = min(parent_distinct, max(source_distinct, (source_distinct * 100) // 95))
+            if 0 < cap < parent_distinct:
+                parent_mod = f"mod({raw_parent_pos},{parent_distinct})"
+                parent_pos = (
+                    "case "
+                    f"when {parent_mod} >= {cap} then "
+                    f"{raw_parent_pos}-({parent_mod}-mod({parent_mod},{cap})) "
+                    f"else {raw_parent_pos} "
+                    "end"
+                )
 
         generated = {}
-        for i, (col, ref_col, distinct_count, min_val) in enumerate(col_info):
+        for i, (col, ref_col, source_distinct, parent_distinct, min_val) in enumerate(col_info):
             if i == 0:
-                expr = f"div(mod(rownum-1, {ref_row_count}), {rows_per_largest})+{min_val}"
+                expr = f"div(({parent_pos})*{parent_distinct},{ref_row_count})+{min_val}"
                 print(f"      Composite FK {col} -> {actual_ref}.{ref_col}: "
-                      f"n-cycling {ref_row_count} pairs, rows_per_value={rows_per_largest} -> {expr}")
+                      f"parent-position span={parent_span}, source={source_distinct} -> {expr}")
             else:
-                expr = f"mod(mod(rownum-1, {ref_row_count}), {distinct_count})+{min_val}"
+                expr = f"mod({parent_pos}, {parent_distinct})+{min_val}"
                 print(f"      Composite FK {col} -> {actual_ref}.{ref_col}: "
-                      f"n-cycling {ref_row_count} pairs, cycling mod {distinct_count} -> {expr}")
+                      f"parent-position source={source_distinct}, parent={parent_distinct} -> {expr}")
             generated[col] = expr
         return generated
 
