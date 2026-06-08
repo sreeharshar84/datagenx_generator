@@ -80,6 +80,7 @@ TPCDS_FK_FALLBACKS = [
     ("store_returns_addr", "store_returns", "customer_address", ("sr_addr_sk",), ("ca_address_sk",)),
     ("store_returns_store", "store_returns", "store", ("sr_store_sk",), ("s_store_sk",)),
     ("store_returns_reason", "store_returns", "reason", ("sr_reason_sk",), ("r_reason_sk",)),
+    ("store_returns_store_sales", "store_returns", "store_sales", ("sr_item_sk", "sr_ticket_number"), ("ss_item_sk", "ss_ticket_number")),
     ("catalog_sales_sold_date", "catalog_sales", "date_dim", ("cs_sold_date_sk",), ("d_date_sk",)),
     ("catalog_sales_sold_time", "catalog_sales", "time_dim", ("cs_sold_time_sk",), ("t_time_sk",)),
     ("catalog_sales_ship_date", "catalog_sales", "date_dim", ("cs_ship_date_sk",), ("d_date_sk",)),
@@ -113,6 +114,7 @@ TPCDS_FK_FALLBACKS = [
     ("catalog_returns_ship_mode", "catalog_returns", "ship_mode", ("cr_ship_mode_sk",), ("sm_ship_mode_sk",)),
     ("catalog_returns_warehouse", "catalog_returns", "warehouse", ("cr_warehouse_sk",), ("w_warehouse_sk",)),
     ("catalog_returns_reason", "catalog_returns", "reason", ("cr_reason_sk",), ("r_reason_sk",)),
+    ("catalog_returns_catalog_sales", "catalog_returns", "catalog_sales", ("cr_item_sk", "cr_order_number"), ("cs_item_sk", "cs_order_number")),
     ("web_sales_sold_date", "web_sales", "date_dim", ("ws_sold_date_sk",), ("d_date_sk",)),
     ("web_sales_sold_time", "web_sales", "time_dim", ("ws_sold_time_sk",), ("t_time_sk",)),
     ("web_sales_ship_date", "web_sales", "date_dim", ("ws_ship_date_sk",), ("d_date_sk",)),
@@ -143,6 +145,7 @@ TPCDS_FK_FALLBACKS = [
     ("web_returns_returning_addr", "web_returns", "customer_address", ("wr_returning_addr_sk",), ("ca_address_sk",)),
     ("web_returns_web_page", "web_returns", "web_page", ("wr_web_page_sk",), ("wp_web_page_sk",)),
     ("web_returns_reason", "web_returns", "reason", ("wr_reason_sk",), ("r_reason_sk",)),
+    ("web_returns_web_sales", "web_returns", "web_sales", ("wr_item_sk", "wr_order_number"), ("ws_item_sk", "ws_order_number")),
 ]
 
 

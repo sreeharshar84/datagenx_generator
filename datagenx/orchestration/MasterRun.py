@@ -329,15 +329,36 @@ def discover_tables_and_dependencies(cursor, database):
         if referenced_table and referenced_table != table:
             dependencies[table].add(referenced_table)
 
-    if not dependencies:
-        fallback_candidates = []
-        table_set = set(all_tables)
-        lower_tables = {t.lower() for t in table_set}
-        if {"lineitem", "orders", "partsupp"}.issubset(lower_tables):
-            fallback_candidates.extend(TPCH_FK_FALLBACKS)
-        if {"date_dim", "item", "customer", "store_sales"}.issubset(lower_tables):
-            fallback_candidates.extend(TPCDS_FK_FALLBACKS)
+    dependencies = add_benchmark_fk_fallback_dependencies(cursor, database, all_tables, dependencies)
+    return all_tables, dependencies
 
+
+def add_benchmark_fk_fallback_dependencies(cursor, database, all_tables, dependencies):
+    """Augment discovered dependencies with benchmark FK fallbacks when needed.
+
+    Some benchmark loaders create primary keys and indexes but omit physical
+    foreign keys. The generation order still needs those relationships so FK
+    appendages can reference already-generated parent tables.
+    """
+    canonical = {t.lower(): t for t in all_tables}
+    normalized = {}
+    for table, referenced_tables in (dependencies or {}).items():
+        table = canonical.get(table.lower(), table)
+        for referenced_table in referenced_tables:
+            referenced_table = canonical.get(referenced_table.lower(), referenced_table)
+            if referenced_table and referenced_table != table:
+                normalized.setdefault(table, set()).add(referenced_table)
+
+    fallback_candidates = []
+    table_set = set(all_tables)
+    lower_tables = {t.lower() for t in table_set}
+    if {"lineitem", "orders", "partsupp"}.issubset(lower_tables):
+        fallback_candidates.extend(TPCH_FK_FALLBACKS)
+    if {"date_dim", "item", "customer", "store_sales"}.issubset(lower_tables):
+        fallback_candidates.extend(TPCDS_FK_FALLBACKS)
+
+    added = 0
+    if fallback_candidates:
         cursor.execute("""
             SELECT TABLE_NAME, COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -358,10 +379,16 @@ def discover_tables_and_dependencies(cursor, database):
             if not all(col in columns[parent_table] for col in parent_cols):
                 continue
             if child_table != parent_table:
-                dependencies.setdefault(child_table, set()).add(parent_table)
+                refs = normalized.setdefault(child_table, set())
+                before = len(refs)
+                refs.add(parent_table)
+                if len(refs) != before:
+                    added += 1
 
-    dependencies = {k: list(v) for k, v in dependencies.items()}
-    return all_tables, dependencies
+    if added:
+        print(f"Using {added} benchmark FK fallback dependenc{'y' if added == 1 else 'ies'} for table ordering.")
+
+    return {k: sorted(v) for k, v in normalized.items()}
 
 
 def regenerate_histograms_with_full_sampling(conn, cursor, database):
@@ -940,6 +967,61 @@ def build_fk_appendages(cursor, table, extractor=None):
         )
         return result
 
+    def build_composite_fk_appendages_from_parent(fk_cols, actual_ref):
+        """Generate child composite-FK columns from existing parent key tuples."""
+        cursor.execute(f"SELECT COUNT(*) FROM `{TARGET_SCHEMA}`.`{actual_ref}`")
+        ref_row_count = cursor.fetchone()[0]
+        if not ref_row_count:
+            return {}
+
+        col_info = []
+        for col, _, ref_col in fk_cols:
+            cursor.execute(
+                f"SELECT COUNT(DISTINCT `{ref_col}`), MIN(`{ref_col}`) "
+                f"FROM `{TARGET_SCHEMA}`.`{actual_ref}`"
+            )
+            distinct_count, min_val = cursor.fetchone()
+            distinct_count = int(distinct_count or 0)
+            if distinct_count <= 0:
+                return {}
+            min_val = min_val if min_val is not None else 0
+            col_info.append((col, ref_col, distinct_count, min_val))
+
+        col_info.sort(key=lambda x: x[2], reverse=True)
+        largest_distinct = col_info[0][2]
+        rows_per_largest = max(1, (ref_row_count + largest_distinct - 1) // largest_distinct)
+
+        generated = {}
+        for i, (col, ref_col, distinct_count, min_val) in enumerate(col_info):
+            if i == 0:
+                expr = f"div(mod(rownum-1, {ref_row_count}), {rows_per_largest})+{min_val}"
+                print(f"      Composite FK {col} -> {actual_ref}.{ref_col}: "
+                      f"n-cycling {ref_row_count} pairs, rows_per_value={rows_per_largest} -> {expr}")
+            else:
+                expr = f"mod(mod(rownum-1, {ref_row_count}), {distinct_count})+{min_val}"
+                print(f"      Composite FK {col} -> {actual_ref}.{ref_col}: "
+                      f"n-cycling {ref_row_count} pairs, cycling mod {distinct_count} -> {expr}")
+            generated[col] = expr
+        return generated
+
+    for constraint_name, fk_cols in constraints.items():
+        if len(fk_cols) < 2:
+            continue
+        child_cols = {col for col, _, _ in fk_cols}
+        if not child_cols.issubset(pk_columns):
+            continue
+        if any(col in appendages for col in child_cols):
+            continue
+        ref_table = fk_cols[0][1]
+        if any(candidate_ref_table != ref_table for _, candidate_ref_table, _ in fk_cols):
+            continue
+        actual_ref = tgt_canonical.get(ref_table.lower())
+        if actual_ref is None:
+            print(f"      Composite FK -> {ref_table}: "
+                  f"SKIPPED (referenced table not yet in {TARGET_SCHEMA})")
+            continue
+        appendages.update(build_composite_fk_appendages_from_parent(fk_cols, actual_ref))
+
     if all_pk_are_fk:
         # Composite PK where all columns are FKs (e.g., PARTSUPP, inventory)
         # Collect info for all PK+FK columns across all constraints
@@ -948,6 +1030,8 @@ def build_fk_appendages(cursor, table, extractor=None):
         for constraint_name, fk_cols in constraints.items():
             for col, ref_table, ref_col in fk_cols:
                 if col in pk_columns:
+                    if col in appendages:
+                        continue
                     actual_ref = tgt_canonical.get(ref_table.lower())
                     if actual_ref is None:
                         continue
@@ -1789,11 +1873,8 @@ def main():
     if DB_TYPE != 'mysql' and extractor:
         # Use extractor to discover tables
         all_tables = extractor.get_tables()
-        dependencies = {}
-        for table in all_tables:
-            fks = extractor.get_foreign_keys(table)
-            if fks:
-                dependencies[table] = list({ref_table for ref_table, _ in fks.values()})
+        dependencies = extractor.get_table_dependencies()
+        dependencies = add_benchmark_fk_fallback_dependencies(cursor, SOURCE_SCHEMA, all_tables, dependencies)
         sorted_tables = topological_sort(all_tables, dependencies)
     else:
         # Use MySQL discovery
