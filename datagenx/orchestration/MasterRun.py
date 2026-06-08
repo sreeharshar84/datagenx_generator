@@ -657,13 +657,11 @@ def build_fk_appendages(cursor, table, extractor=None):
                 continue
             if child_table not in source_columns or ref_table not in source_columns:
                 continue
-            if child_table not in target_columns or ref_table not in target_columns:
+            if ref_table not in target_columns:
                 continue
             if not all(col in source_columns[child_table] for col in child_cols):
                 continue
             if not all(col in source_columns[ref_table] for col in ref_cols):
-                continue
-            if not all(col in target_columns[child_table] for col in child_cols):
                 continue
             if not all(col in target_columns[ref_table] for col in ref_cols):
                 continue
