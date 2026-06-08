@@ -556,7 +556,7 @@ TPC-H/TPC-DS relationship definitions and runs orphan checks against both source
 and target schemas.
 
 `MasterRun.py` applies benchmark FK metadata to the generated target after
-a full MySQL benchmark load. For a full TPC-DS run it applies
+a full MySQL or TiDB benchmark load. For a full TPC-DS run it applies
 `scripts/tpcds_fk.sql` to the target schema after all tables are created and
 loaded. For a full TPC-H run it similarly applies `scripts/tpch_fk.sql` when the
 target constraints are not already present. Partial `--tables` runs skip this

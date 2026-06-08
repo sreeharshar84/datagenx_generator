@@ -507,7 +507,7 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
     the same relationships. The SQL scripts are intentionally applied only after
     all tables have been loaded.
     """
-    if DB_TYPE != "mysql":
+    if DB_TYPE not in ("mysql", "tidb"):
         return
     if TABLES_FILTER:
         print("Skipping benchmark FK script for partial table run.")
