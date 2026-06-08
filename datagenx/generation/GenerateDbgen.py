@@ -224,13 +224,37 @@ def build_single_fk_expression(
     actual_distinct = actual_distinct or 0
     source_row_count = source_row_count or 1
 
-    # Calculate NULL rate: parts per 10000 (0.01% precision) for rows with NULL/0 FK values
+    # Preserve NULL and zero/unknown FK rows separately. TPC-style schemas often
+    # use 0 as an unknown surrogate key while parent domains start at 1; report
+    # FK orphan checks intentionally ignore those 0 values.
     cursor.execute(f"""
-        SELECT COUNT(*) FROM `{source_db}`.`{table}`
+        SELECT COUNT(*),
+               SUM(`{col}` IS NULL),
+               SUM(`{col}` = 0)
+        FROM `{source_db}`.`{table}`
     """)
-    total_row_count = cursor.fetchone()[0] or 1
-    null_row_count = total_row_count - source_row_count
-    null_rate_per_10000 = (null_row_count * 10000) // total_row_count if total_row_count > 0 else 0
+    total_row_count, null_row_count, zero_row_count = cursor.fetchone()
+    total_row_count = total_row_count or 1
+    null_row_count = int(null_row_count or 0)
+    zero_row_count = int(zero_row_count or 0) if ref_min > 0 else 0
+    unknown_row_count = null_row_count + zero_row_count
+    unknown_rate_per_10000 = (unknown_row_count * 10000) // total_row_count if total_row_count > 0 else 0
+
+    def wrap_unknown_rows(expression):
+        case_lines = []
+        cumulative = 0
+        if zero_row_count > 0:
+            cumulative += zero_row_count
+            case_lines.append(f"when rownum <= {cumulative} then 0")
+        if null_row_count > 0:
+            cumulative += null_row_count
+            case_lines.append(f"when rownum <= {cumulative} then NULL")
+        if not case_lines:
+            return expression
+        return f"""case
+    {' '.join(case_lines)}
+    else {expression}
+    end"""
 
     # Calculate coverage ratio (how much of referenced table is used)
     coverage_ratio = actual_distinct / ref_table_size if ref_table_size > 0 else 1.0
@@ -257,6 +281,7 @@ def build_single_fk_expression(
         source_row_count,
         valid_fk_predicate,
         null_row_count,
+        zero_row_count,
     )
     if exact_low_cardinality:
         return exact_low_cardinality
@@ -297,10 +322,10 @@ def build_single_fk_expression(
         # Moderate coverage: use mod() cycling to match exact distinct count
         # This generates values 1 to actual_distinct (assuming ref_min=1)
         expression = f"mod(rownum-1, {actual_distinct}) + {ref_min}"
-        # Wrap with NULL handling if source has NULL/0 values
-        if null_rate_per_10000 > 0:
-            expression = f"case when rand.range(0, 10000) < {null_rate_per_10000} then NULL else {expression} end"
-            description = f"cycling mod({actual_distinct})+{ref_min} with {null_rate_per_10000/100:.1f}% NULL ({coverage_ratio*100:.1f}% coverage)"
+        # Wrap with NULL/unknown handling if source has NULL/0 values.
+        if unknown_rate_per_10000 > 0:
+            expression = wrap_unknown_rows(expression)
+            description = f"cycling mod({actual_distinct})+{ref_min} with {unknown_rate_per_10000/100:.1f}% unknown ({coverage_ratio*100:.1f}% coverage)"
         else:
             description = f"cycling mod({actual_distinct})+{ref_min} ({coverage_ratio*100:.1f}% coverage)"
         return (expression, description)
@@ -315,10 +340,10 @@ def build_single_fk_expression(
     # Use mod() cycling to match exact source cardinality, avoiding birthday paradox
     expression = f"mod(rownum-1, {actual_distinct}) + {ref_min}"
 
-    # Wrap with NULL handling if source has NULL/0 values
-    if null_rate_per_10000 > 0:
-        expression = f"case when rand.range(0, 10000) < {null_rate_per_10000} then NULL else {expression} end"
-        description = f"cycling mod({actual_distinct})+{ref_min} with {null_rate_per_10000/100:.1f}% NULL (dense {coverage_ratio*100:.0f}% coverage)"
+    # Wrap with NULL/unknown handling if source has NULL/0 values.
+    if unknown_rate_per_10000 > 0:
+        expression = wrap_unknown_rows(expression)
+        description = f"cycling mod({actual_distinct})+{ref_min} with {unknown_rate_per_10000/100:.1f}% unknown (dense {coverage_ratio*100:.0f}% coverage)"
     else:
         description = f"cycling mod({actual_distinct})+{ref_min} (dense {coverage_ratio*100:.0f}% coverage)"
     return (expression, description)
@@ -344,6 +369,7 @@ def _build_exact_low_cardinality_fk_expression(
     source_row_count,
     valid_fk_predicate,
     null_row_count=0,
+    zero_row_count=0,
 ):
     """Build a deterministic FK expression from exact source frequencies.
 
@@ -380,8 +406,12 @@ def _build_exact_low_cardinality_fk_expression(
 
     sampled_values = target_values[:actual_distinct]
     case_lines = []
-    cumulative = int(null_row_count or 0)
-    if cumulative > 0:
+    cumulative = 0
+    if zero_row_count:
+        cumulative += int(zero_row_count)
+        case_lines.append(f"when rownum <= {cumulative} then 0")
+    if null_row_count:
+        cumulative += int(null_row_count)
         case_lines.append(f"when rownum <= {cumulative} then NULL")
     for target_value, (_source_value, count) in zip(sampled_values, source_frequencies):
         if count <= 0:
