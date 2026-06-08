@@ -27,6 +27,125 @@ DEFAULT_COLUMNS = [
 ]
 
 
+TPCH_FK_FALLBACKS = [
+    ("nation_region", "nation", "region", ("n_regionkey",), ("r_regionkey",)),
+    ("supplier_nation", "supplier", "nation", ("s_nationkey",), ("n_nationkey",)),
+    ("customer_nation", "customer", "nation", ("c_nationkey",), ("n_nationkey",)),
+    ("orders_customer", "orders", "customer", ("o_custkey",), ("c_custkey",)),
+    ("lineitem_orders", "lineitem", "orders", ("l_orderkey",), ("o_orderkey",)),
+    (
+        "lineitem_partsupp",
+        "lineitem",
+        "partsupp",
+        ("l_partkey", "l_suppkey"),
+        ("ps_partkey", "ps_suppkey"),
+    ),
+]
+
+
+TPCDS_FK_FALLBACKS = [
+    ("catalog_page_start_date", "catalog_page", "date_dim", ("cp_start_date_sk",), ("d_date_sk",)),
+    ("catalog_page_end_date", "catalog_page", "date_dim", ("cp_end_date_sk",), ("d_date_sk",)),
+    ("customer_current_cdemo", "customer", "customer_demographics", ("c_current_cdemo_sk",), ("cd_demo_sk",)),
+    ("customer_current_hdemo", "customer", "household_demographics", ("c_current_hdemo_sk",), ("hd_demo_sk",)),
+    ("customer_current_addr", "customer", "customer_address", ("c_current_addr_sk",), ("ca_address_sk",)),
+    ("household_income_band", "household_demographics", "income_band", ("hd_income_band_sk",), ("ib_income_band_sk",)),
+    ("promotion_start_date", "promotion", "date_dim", ("p_start_date_sk",), ("d_date_sk",)),
+    ("promotion_end_date", "promotion", "date_dim", ("p_end_date_sk",), ("d_date_sk",)),
+    ("promotion_item", "promotion", "item", ("p_item_sk",), ("i_item_sk",)),
+    ("store_closed_date", "store", "date_dim", ("s_closed_date_sk",), ("d_date_sk",)),
+    ("web_page_creation_date", "web_page", "date_dim", ("wp_creation_date_sk",), ("d_date_sk",)),
+    ("web_page_access_date", "web_page", "date_dim", ("wp_access_date_sk",), ("d_date_sk",)),
+    ("web_page_customer", "web_page", "customer", ("wp_customer_sk",), ("c_customer_sk",)),
+    ("web_site_open_date", "web_site", "date_dim", ("web_open_date_sk",), ("d_date_sk",)),
+    ("web_site_close_date", "web_site", "date_dim", ("web_close_date_sk",), ("d_date_sk",)),
+    ("inventory_date", "inventory", "date_dim", ("inv_date_sk",), ("d_date_sk",)),
+    ("inventory_item", "inventory", "item", ("inv_item_sk",), ("i_item_sk",)),
+    ("inventory_warehouse", "inventory", "warehouse", ("inv_warehouse_sk",), ("w_warehouse_sk",)),
+    ("store_sales_sold_date", "store_sales", "date_dim", ("ss_sold_date_sk",), ("d_date_sk",)),
+    ("store_sales_sold_time", "store_sales", "time_dim", ("ss_sold_time_sk",), ("t_time_sk",)),
+    ("store_sales_item", "store_sales", "item", ("ss_item_sk",), ("i_item_sk",)),
+    ("store_sales_customer", "store_sales", "customer", ("ss_customer_sk",), ("c_customer_sk",)),
+    ("store_sales_cdemo", "store_sales", "customer_demographics", ("ss_cdemo_sk",), ("cd_demo_sk",)),
+    ("store_sales_hdemo", "store_sales", "household_demographics", ("ss_hdemo_sk",), ("hd_demo_sk",)),
+    ("store_sales_addr", "store_sales", "customer_address", ("ss_addr_sk",), ("ca_address_sk",)),
+    ("store_sales_store", "store_sales", "store", ("ss_store_sk",), ("s_store_sk",)),
+    ("store_sales_promo", "store_sales", "promotion", ("ss_promo_sk",), ("p_promo_sk",)),
+    ("store_returns_returned_date", "store_returns", "date_dim", ("sr_returned_date_sk",), ("d_date_sk",)),
+    ("store_returns_return_time", "store_returns", "time_dim", ("sr_return_time_sk",), ("t_time_sk",)),
+    ("store_returns_item", "store_returns", "item", ("sr_item_sk",), ("i_item_sk",)),
+    ("store_returns_customer", "store_returns", "customer", ("sr_customer_sk",), ("c_customer_sk",)),
+    ("store_returns_cdemo", "store_returns", "customer_demographics", ("sr_cdemo_sk",), ("cd_demo_sk",)),
+    ("store_returns_hdemo", "store_returns", "household_demographics", ("sr_hdemo_sk",), ("hd_demo_sk",)),
+    ("store_returns_addr", "store_returns", "customer_address", ("sr_addr_sk",), ("ca_address_sk",)),
+    ("store_returns_store", "store_returns", "store", ("sr_store_sk",), ("s_store_sk",)),
+    ("store_returns_reason", "store_returns", "reason", ("sr_reason_sk",), ("r_reason_sk",)),
+    ("catalog_sales_sold_date", "catalog_sales", "date_dim", ("cs_sold_date_sk",), ("d_date_sk",)),
+    ("catalog_sales_sold_time", "catalog_sales", "time_dim", ("cs_sold_time_sk",), ("t_time_sk",)),
+    ("catalog_sales_ship_date", "catalog_sales", "date_dim", ("cs_ship_date_sk",), ("d_date_sk",)),
+    ("catalog_sales_bill_customer", "catalog_sales", "customer", ("cs_bill_customer_sk",), ("c_customer_sk",)),
+    ("catalog_sales_bill_cdemo", "catalog_sales", "customer_demographics", ("cs_bill_cdemo_sk",), ("cd_demo_sk",)),
+    ("catalog_sales_bill_hdemo", "catalog_sales", "household_demographics", ("cs_bill_hdemo_sk",), ("hd_demo_sk",)),
+    ("catalog_sales_bill_addr", "catalog_sales", "customer_address", ("cs_bill_addr_sk",), ("ca_address_sk",)),
+    ("catalog_sales_ship_customer", "catalog_sales", "customer", ("cs_ship_customer_sk",), ("c_customer_sk",)),
+    ("catalog_sales_ship_cdemo", "catalog_sales", "customer_demographics", ("cs_ship_cdemo_sk",), ("cd_demo_sk",)),
+    ("catalog_sales_ship_hdemo", "catalog_sales", "household_demographics", ("cs_ship_hdemo_sk",), ("hd_demo_sk",)),
+    ("catalog_sales_ship_addr", "catalog_sales", "customer_address", ("cs_ship_addr_sk",), ("ca_address_sk",)),
+    ("catalog_sales_call_center", "catalog_sales", "call_center", ("cs_call_center_sk",), ("cc_call_center_sk",)),
+    ("catalog_sales_catalog_page", "catalog_sales", "catalog_page", ("cs_catalog_page_sk",), ("cp_catalog_page_sk",)),
+    ("catalog_sales_ship_mode", "catalog_sales", "ship_mode", ("cs_ship_mode_sk",), ("sm_ship_mode_sk",)),
+    ("catalog_sales_warehouse", "catalog_sales", "warehouse", ("cs_warehouse_sk",), ("w_warehouse_sk",)),
+    ("catalog_sales_item", "catalog_sales", "item", ("cs_item_sk",), ("i_item_sk",)),
+    ("catalog_sales_promo", "catalog_sales", "promotion", ("cs_promo_sk",), ("p_promo_sk",)),
+    ("catalog_returns_returned_date", "catalog_returns", "date_dim", ("cr_returned_date_sk",), ("d_date_sk",)),
+    ("catalog_returns_returned_time", "catalog_returns", "time_dim", ("cr_returned_time_sk",), ("t_time_sk",)),
+    ("catalog_returns_item", "catalog_returns", "item", ("cr_item_sk",), ("i_item_sk",)),
+    ("catalog_returns_refunded_customer", "catalog_returns", "customer", ("cr_refunded_customer_sk",), ("c_customer_sk",)),
+    ("catalog_returns_refunded_cdemo", "catalog_returns", "customer_demographics", ("cr_refunded_cdemo_sk",), ("cd_demo_sk",)),
+    ("catalog_returns_refunded_hdemo", "catalog_returns", "household_demographics", ("cr_refunded_hdemo_sk",), ("hd_demo_sk",)),
+    ("catalog_returns_refunded_addr", "catalog_returns", "customer_address", ("cr_refunded_addr_sk",), ("ca_address_sk",)),
+    ("catalog_returns_returning_customer", "catalog_returns", "customer", ("cr_returning_customer_sk",), ("c_customer_sk",)),
+    ("catalog_returns_returning_cdemo", "catalog_returns", "customer_demographics", ("cr_returning_cdemo_sk",), ("cd_demo_sk",)),
+    ("catalog_returns_returning_hdemo", "catalog_returns", "household_demographics", ("cr_returning_hdemo_sk",), ("hd_demo_sk",)),
+    ("catalog_returns_returning_addr", "catalog_returns", "customer_address", ("cr_returning_addr_sk",), ("ca_address_sk",)),
+    ("catalog_returns_call_center", "catalog_returns", "call_center", ("cr_call_center_sk",), ("cc_call_center_sk",)),
+    ("catalog_returns_catalog_page", "catalog_returns", "catalog_page", ("cr_catalog_page_sk",), ("cp_catalog_page_sk",)),
+    ("catalog_returns_ship_mode", "catalog_returns", "ship_mode", ("cr_ship_mode_sk",), ("sm_ship_mode_sk",)),
+    ("catalog_returns_warehouse", "catalog_returns", "warehouse", ("cr_warehouse_sk",), ("w_warehouse_sk",)),
+    ("catalog_returns_reason", "catalog_returns", "reason", ("cr_reason_sk",), ("r_reason_sk",)),
+    ("web_sales_sold_date", "web_sales", "date_dim", ("ws_sold_date_sk",), ("d_date_sk",)),
+    ("web_sales_sold_time", "web_sales", "time_dim", ("ws_sold_time_sk",), ("t_time_sk",)),
+    ("web_sales_ship_date", "web_sales", "date_dim", ("ws_ship_date_sk",), ("d_date_sk",)),
+    ("web_sales_item", "web_sales", "item", ("ws_item_sk",), ("i_item_sk",)),
+    ("web_sales_bill_customer", "web_sales", "customer", ("ws_bill_customer_sk",), ("c_customer_sk",)),
+    ("web_sales_bill_cdemo", "web_sales", "customer_demographics", ("ws_bill_cdemo_sk",), ("cd_demo_sk",)),
+    ("web_sales_bill_hdemo", "web_sales", "household_demographics", ("ws_bill_hdemo_sk",), ("hd_demo_sk",)),
+    ("web_sales_bill_addr", "web_sales", "customer_address", ("ws_bill_addr_sk",), ("ca_address_sk",)),
+    ("web_sales_ship_customer", "web_sales", "customer", ("ws_ship_customer_sk",), ("c_customer_sk",)),
+    ("web_sales_ship_cdemo", "web_sales", "customer_demographics", ("ws_ship_cdemo_sk",), ("cd_demo_sk",)),
+    ("web_sales_ship_hdemo", "web_sales", "household_demographics", ("ws_ship_hdemo_sk",), ("hd_demo_sk",)),
+    ("web_sales_ship_addr", "web_sales", "customer_address", ("ws_ship_addr_sk",), ("ca_address_sk",)),
+    ("web_sales_web_page", "web_sales", "web_page", ("ws_web_page_sk",), ("wp_web_page_sk",)),
+    ("web_sales_web_site", "web_sales", "web_site", ("ws_web_site_sk",), ("web_site_sk",)),
+    ("web_sales_ship_mode", "web_sales", "ship_mode", ("ws_ship_mode_sk",), ("sm_ship_mode_sk",)),
+    ("web_sales_warehouse", "web_sales", "warehouse", ("ws_warehouse_sk",), ("w_warehouse_sk",)),
+    ("web_sales_promo", "web_sales", "promotion", ("ws_promo_sk",), ("p_promo_sk",)),
+    ("web_returns_returned_date", "web_returns", "date_dim", ("wr_returned_date_sk",), ("d_date_sk",)),
+    ("web_returns_returned_time", "web_returns", "time_dim", ("wr_returned_time_sk",), ("t_time_sk",)),
+    ("web_returns_item", "web_returns", "item", ("wr_item_sk",), ("i_item_sk",)),
+    ("web_returns_refunded_customer", "web_returns", "customer", ("wr_refunded_customer_sk",), ("c_customer_sk",)),
+    ("web_returns_refunded_cdemo", "web_returns", "customer_demographics", ("wr_refunded_cdemo_sk",), ("cd_demo_sk",)),
+    ("web_returns_refunded_hdemo", "web_returns", "household_demographics", ("wr_refunded_hdemo_sk",), ("hd_demo_sk",)),
+    ("web_returns_refunded_addr", "web_returns", "customer_address", ("wr_refunded_addr_sk",), ("ca_address_sk",)),
+    ("web_returns_returning_customer", "web_returns", "customer", ("wr_returning_customer_sk",), ("c_customer_sk",)),
+    ("web_returns_returning_cdemo", "web_returns", "customer_demographics", ("wr_returning_cdemo_sk",), ("cd_demo_sk",)),
+    ("web_returns_returning_hdemo", "web_returns", "household_demographics", ("wr_returning_hdemo_sk",), ("hd_demo_sk",)),
+    ("web_returns_returning_addr", "web_returns", "customer_address", ("wr_returning_addr_sk",), ("ca_address_sk",)),
+    ("web_returns_web_page", "web_returns", "web_page", ("wr_web_page_sk",), ("wp_web_page_sk",)),
+    ("web_returns_reason", "web_returns", "reason", ("wr_reason_sk",), ("r_reason_sk",)),
+]
+
+
 def connect(args):
     database = args.database or args.source_schema
     kwargs = connection_kwargs_for(
@@ -243,6 +362,13 @@ def histogram_diff(source_hist, target_hist):
     )
 
 
+def histogram_is_sampled(hist):
+    try:
+        return float(hist.get("sampling-rate", 1.0)) < 1.0
+    except (TypeError, ValueError):
+        return False
+
+
 def frequency_shape_diff(source_counts, target_counts):
     source_total = sum(source_counts)
     target_total = sum(target_counts)
@@ -404,6 +530,24 @@ def get_histogram_summary(cursor, args, source_schema, target_schema, tables, ro
                     target_histogram_type,
                 ) = histogram_diff(source_hist[col], target_hist[col])
                 reason = "distribution compared"
+                source_distinct = lookup_metric(distinct_df, table, col, "source_distinct")
+                target_distinct = lookup_metric(distinct_df, table, col, "target_distinct")
+                max_distinct = max(value for value in (source_distinct, target_distinct, 0) if value is not None)
+                if (
+                    max_distinct <= args.sampled_histogram_fallback_max_distinct
+                    and (
+                        histogram_is_sampled(source_hist[col])
+                        or histogram_is_sampled(target_hist[col])
+                    )
+                ):
+                    source_counts = get_frequency_counts(cursor, source_schema, table, col)
+                    target_counts = get_frequency_counts(cursor, target_schema, table, col)
+                    diff = frequency_shape_diff(source_counts, target_counts)
+                    source_buckets = len(source_counts)
+                    target_buckets = len(target_counts)
+                    source_histogram_type = "frequency-shape"
+                    target_histogram_type = "frequency-shape"
+                    reason = "sampled histogram; exact frequency shape fallback"
             if col not in source_hist:
                 source_buckets = 0
                 target_buckets = len(target_hist[col].get("buckets", []))
@@ -519,41 +663,193 @@ def get_frequency_df(cursor, source_schema, target_schema, table, column):
     return df.drop(columns=["sort_value"])
 
 
+def _quote_identifier(name):
+    return "`" + str(name).replace("`", "``") + "`"
+
+
+def _relationship(name, child_table, parent_table, child_cols, parent_cols, definition_source):
+    return {
+        "name": name,
+        "child_table": child_table,
+        "parent_table": parent_table,
+        "child_cols": tuple(child_cols),
+        "parent_cols": tuple(parent_cols),
+        "definition_source": definition_source,
+    }
+
+
+def _schema_columns(cursor, schema):
+    df = fetch_df(
+        cursor,
+        """
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM information_schema.columns
+        WHERE TABLE_SCHEMA = %s
+        """,
+        (schema,),
+    )
+    columns = {}
+    for _, row in df.iterrows():
+        columns.setdefault(row["TABLE_NAME"], set()).add(row["COLUMN_NAME"])
+    return columns
+
+
+def _relationship_exists(candidate, schema_columns):
+    _, child_table, parent_table, child_cols, parent_cols = candidate
+    if child_table not in schema_columns or parent_table not in schema_columns:
+        return False
+    return (
+        all(col in schema_columns[child_table] for col in child_cols)
+        and all(col in schema_columns[parent_table] for col in parent_cols)
+    )
+
+
+def _physical_fk_relationships(cursor, schema):
+    df = fetch_df(
+        cursor,
+        """
+        SELECT
+            CONSTRAINT_NAME,
+            TABLE_NAME,
+            COLUMN_NAME,
+            REFERENCED_TABLE_NAME,
+            REFERENCED_COLUMN_NAME,
+            ORDINAL_POSITION
+        FROM information_schema.key_column_usage
+        WHERE TABLE_SCHEMA = %s
+          AND REFERENCED_TABLE_NAME IS NOT NULL
+        ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+        """,
+        (schema,),
+    )
+    if df.empty:
+        return []
+
+    relationships = []
+    grouped = df.groupby(["TABLE_NAME", "CONSTRAINT_NAME"], sort=False)
+    for (child_table, constraint_name), group in grouped:
+        parent_table = group["REFERENCED_TABLE_NAME"].iloc[0]
+        child_cols = tuple(group["COLUMN_NAME"].tolist())
+        parent_cols = tuple(group["REFERENCED_COLUMN_NAME"].tolist())
+        check_name = str(constraint_name) or f"{child_table}_{parent_table}_{'_'.join(child_cols)}"
+        relationships.append(
+            _relationship(
+                check_name,
+                child_table,
+                parent_table,
+                child_cols,
+                parent_cols,
+                "information_schema",
+            )
+        )
+    return relationships
+
+
+def _fallback_fk_relationships(cursor, source_schema, target_schema):
+    source_columns = _schema_columns(cursor, source_schema)
+    target_columns = _schema_columns(cursor, target_schema)
+    tables = set(source_columns) | set(target_columns)
+    candidates = []
+
+    if {"lineitem", "orders", "partsupp"}.issubset(tables):
+        candidates.extend(TPCH_FK_FALLBACKS)
+    if {"date_dim", "item", "customer", "store_sales"}.issubset(tables):
+        candidates.extend(TPCDS_FK_FALLBACKS)
+
+    relationships = []
+    seen = set()
+    for candidate in candidates:
+        key = candidate[:3] + candidate[3] + candidate[4]
+        if key in seen:
+            continue
+        if _relationship_exists(candidate, source_columns) and _relationship_exists(candidate, target_columns):
+            relationships.append(_relationship(*candidate, definition_source="fallback"))
+            seen.add(key)
+    return relationships
+
+
+def _fk_relationships(cursor, source_schema, target_schema):
+    relationships = _physical_fk_relationships(cursor, source_schema)
+    if relationships:
+        return relationships
+    relationships = _physical_fk_relationships(cursor, target_schema)
+    if relationships:
+        return relationships
+    return _fallback_fk_relationships(cursor, source_schema, target_schema)
+
+
 def get_fk_orphans(cursor, source_schema, target_schema):
-    # TPC-H checks. If a table is absent, skip that check.
-    checks = [
-        ("nation_region", "nation n", "region r", "n.n_regionkey = r.r_regionkey", "r.r_regionkey IS NULL"),
-        ("supplier_nation", "supplier s", "nation n", "s.s_nationkey = n.n_nationkey", "n.n_nationkey IS NULL"),
-        ("customer_nation", "customer c", "nation n", "c.c_nationkey = n.n_nationkey", "n.n_nationkey IS NULL"),
-        ("orders_customer", "orders o", "customer c", "o.o_custkey = c.c_custkey", "c.c_custkey IS NULL"),
-        ("lineitem_orders", "lineitem l", "orders o", "l.l_orderkey = o.o_orderkey", "o.o_orderkey IS NULL"),
-        ("lineitem_partsupp", "lineitem l", "partsupp ps", "l.l_partkey = ps.ps_partkey AND l.l_suppkey = ps.ps_suppkey", "ps.ps_partkey IS NULL"),
-    ]
+    checks = _fk_relationships(cursor, source_schema, target_schema)
     rows = []
     for schema_name, label_prefix in ((source_schema, "source"), (target_schema, "target")):
-        for name, child, parent, join_expr, orphan_expr in checks:
-            child_table = child.split()[0]
-            parent_table = parent.split()[0]
+        for check in checks:
+            child_table = check["child_table"]
+            parent_table = check["parent_table"]
+            child_cols = check["child_cols"]
+            parent_cols = check["parent_cols"]
+            join_expr = " AND ".join(
+                f"c.{_quote_identifier(child_col)} = p.{_quote_identifier(parent_col)}"
+                for child_col, parent_col in zip(child_cols, parent_cols)
+            )
+            valid_child_predicates = []
+            for child_col, parent_col in zip(child_cols, parent_cols):
+                predicate = f"c.{_quote_identifier(child_col)} IS NOT NULL"
+                try:
+                    cursor.execute(
+                        f"""
+                        SELECT MIN({_quote_identifier(parent_col)})
+                        FROM {_quote_identifier(schema_name)}.{_quote_identifier(parent_table)}
+                        """
+                    )
+                    parent_min = cursor.fetchone()[0]
+                except mysql.connector.Error:
+                    parent_min = None
+                if parent_min is not None:
+                    try:
+                        if float(parent_min) > 0:
+                            predicate += f" AND c.{_quote_identifier(child_col)} <> 0"
+                    except (TypeError, ValueError):
+                        pass
+                valid_child_predicates.append(predicate)
+            non_null_expr = " AND ".join(valid_child_predicates)
+            orphan_expr = f"p.{_quote_identifier(parent_cols[0])} IS NULL"
             try:
                 cursor.execute(f"""
                     SELECT COUNT(*)
-                    FROM `{schema_name}`.{child}
-                    LEFT JOIN `{schema_name}`.{parent}
+                    FROM {_quote_identifier(schema_name)}.{_quote_identifier(child_table)} c
+                    LEFT JOIN {_quote_identifier(schema_name)}.{_quote_identifier(parent_table)} p
                       ON {join_expr}
-                    WHERE {orphan_expr}
+                    WHERE {non_null_expr}
+                      AND {orphan_expr}
                 """)
                 count = cursor.fetchone()[0]
             except mysql.connector.Error:
                 continue
             rows.append({
                 "schema": label_prefix,
-                "check": name,
+                "check": check["name"],
                 "child_table": child_table,
                 "parent_table": parent_table,
+                "child_columns": ",".join(child_cols),
+                "parent_columns": ",".join(parent_cols),
                 "orphan_count": count,
                 "status": "PASS" if count == 0 else "FAIL",
+                "definition_source": check["definition_source"],
             })
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "schema",
+            "check",
+            "child_table",
+            "parent_table",
+            "child_columns",
+            "parent_columns",
+            "orphan_count",
+            "status",
+            "definition_source",
+        ],
+    )
 
 
 def get_row_overlap(
@@ -1053,10 +1349,12 @@ def build_fk_graph(orphan_df):
     }
 
     fig = go.Figure()
+    edge_count = 0
     for _, row in target_rows.iterrows():
         parent, child = edge_map.get(row["check"], (row["parent_table"], row["child_table"]))
         if parent not in positions or child not in positions:
             continue
+        edge_count += 1
         x0, y0 = positions[parent]
         x1, y1 = positions[child]
         color = "#2ca02c" if row["status"] == "PASS" else "#d62728"
@@ -1071,10 +1369,14 @@ def build_fk_graph(orphan_df):
         ))
 
     nodes = sorted(set(target_rows["child_table"]).union(set(target_rows["parent_table"])))
+    positioned_nodes = [node for node in nodes if node in positions]
+    if edge_count == 0 or not positioned_nodes:
+        return None
+
     fig.add_trace(go.Scatter(
-        x=[positions[node][0] for node in nodes if node in positions],
-        y=[positions[node][1] for node in nodes if node in positions],
-        text=[node for node in nodes if node in positions],
+        x=[positions[node][0] for node in positioned_nodes],
+        y=[positions[node][1] for node in positioned_nodes],
+        text=positioned_nodes,
         mode="markers+text",
         textposition="middle center",
         marker=dict(size=54, color="#f5f5f5", line=dict(color="#555", width=1.5)),
@@ -1082,7 +1384,7 @@ def build_fk_graph(orphan_df):
         showlegend=False,
     ))
     fig.update_layout(
-        title="TPC-H Referential Integrity Graph",
+        title="Referential Integrity Graph",
         height=430,
         margin=dict(l=30, r=30, t=60, b=30),
         xaxis=dict(visible=False),
@@ -1348,6 +1650,12 @@ def parse_args():
         type=int,
         default=2000000,
         help="TiDB-only NDV ceiling for exact frequency-shape fallback on critical histogram columns.",
+    )
+    parser.add_argument(
+        "--sampled-histogram-fallback-max-distinct",
+        type=int,
+        default=1000,
+        help="Maximum column NDV for exact frequency-shape fallback when backend histograms are sampled.",
     )
     parser.add_argument(
         "--tidb-mem-quota-query",

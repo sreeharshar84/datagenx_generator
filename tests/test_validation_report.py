@@ -234,6 +234,7 @@ class ValidationReportTest(unittest.TestCase):
                 histogram_fallback_max_rows=1000,
                 histogram_fallback_max_distinct=10,
                 tidb_histogram_fallback_max_distinct=10,
+                sampled_histogram_fallback_max_distinct=10,
             )
             row_df = validation_report.pd.DataFrame([
                 {"table": "inventory", "source_rows": 20, "target_rows": 20},
@@ -295,6 +296,7 @@ class ValidationReportTest(unittest.TestCase):
                 histogram_fallback_max_rows=1000,
                 histogram_fallback_max_distinct=10,
                 tidb_histogram_fallback_max_distinct=10,
+                sampled_histogram_fallback_max_distinct=10,
             )
             row_df = validation_report.pd.DataFrame([
                 {"table": "item", "source_rows": 200, "target_rows": 200},
@@ -357,6 +359,7 @@ class ValidationReportTest(unittest.TestCase):
                 histogram_fallback_max_rows=10000,
                 histogram_fallback_max_distinct=100000,
                 tidb_histogram_fallback_max_distinct=100000,
+                sampled_histogram_fallback_max_distinct=1000,
             )
             row_df = validation_report.pd.DataFrame([
                 {"table": "store_sales", "source_rows": 14_000_000, "target_rows": 14_000_000},

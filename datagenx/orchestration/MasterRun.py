@@ -50,6 +50,7 @@ from datagenx.validation.PopulateNewTableAndValidate import (
     report_rowcount_mismatch,
     report_table_stats,
 )
+from datagenx.validation.validation_report import TPCH_FK_FALLBACKS, TPCDS_FK_FALLBACKS
 
 # ----------------------------------------------------------------
 # Configuration - imported from central config.py
@@ -328,6 +329,37 @@ def discover_tables_and_dependencies(cursor, database):
         if referenced_table and referenced_table != table:
             dependencies[table].add(referenced_table)
 
+    if not dependencies:
+        fallback_candidates = []
+        table_set = set(all_tables)
+        lower_tables = {t.lower() for t in table_set}
+        if {"lineitem", "orders", "partsupp"}.issubset(lower_tables):
+            fallback_candidates.extend(TPCH_FK_FALLBACKS)
+        if {"date_dim", "item", "customer", "store_sales"}.issubset(lower_tables):
+            fallback_candidates.extend(TPCDS_FK_FALLBACKS)
+
+        cursor.execute("""
+            SELECT TABLE_NAME, COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = %s
+        """, (database,))
+        columns = {}
+        for table_name, column_name in cursor.fetchall():
+            table_name = canonical.get(table_name.lower(), table_name)
+            columns.setdefault(table_name, set()).add(column_name)
+
+        for _name, child_table, parent_table, child_cols, parent_cols in fallback_candidates:
+            child_table = canonical.get(child_table.lower(), child_table)
+            parent_table = canonical.get(parent_table.lower(), parent_table)
+            if child_table not in columns or parent_table not in columns:
+                continue
+            if not all(col in columns[child_table] for col in child_cols):
+                continue
+            if not all(col in columns[parent_table] for col in parent_cols):
+                continue
+            if child_table != parent_table:
+                dependencies.setdefault(child_table, set()).add(parent_table)
+
     dependencies = {k: list(v) for k, v in dependencies.items()}
     return all_tables, dependencies
 
@@ -443,6 +475,119 @@ def prepare_target_schema(cursor, target_schema, tables_to_drop=None):
         print(f"Created schema `{target_schema}`.")
 
 
+def _project_root():
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def _benchmark_fk_script_for_tables(tables):
+    table_names = {table.lower() for table in tables}
+    if {"lineitem", "orders", "partsupp", "customer", "supplier"}.issubset(table_names):
+        return "TPC-H", os.path.join(_project_root(), "scripts", "tpch_fk.sql")
+    if {"date_dim", "item", "customer", "store_sales", "catalog_sales", "web_sales"}.issubset(table_names):
+        return "TPC-DS", os.path.join(_project_root(), "scripts", "tpcds_fk.sql")
+    return None, None
+
+
+def _strip_sql_comments(statement):
+    lines = []
+    for line in statement.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
+    """Apply benchmark FK constraints after all target tables are loaded.
+
+    Source benchmark loaders may not create physical FK metadata, especially for
+    TPC-DS. Generation and validation can use fallback relationships, but adding
+    physical constraints to the generated target makes information_schema reflect
+    the same relationships. The SQL scripts are intentionally applied only after
+    all tables have been loaded.
+    """
+    if DB_TYPE != "mysql":
+        return
+    if TABLES_FILTER:
+        print("Skipping benchmark FK script for partial table run.")
+        return
+
+    benchmark, script_path = _benchmark_fk_script_for_tables(loaded_tables)
+    if not benchmark or not script_path or not os.path.exists(script_path):
+        return
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = %s
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    """, (target_schema,))
+    existing_fk_count = cursor.fetchone()[0]
+    if existing_fk_count:
+        print(
+            f"Skipping {benchmark} FK script for `{target_schema}`; "
+            f"{existing_fk_count} physical FK constraint(s) already exist."
+        )
+        return
+
+    with open(script_path) as f:
+        sql = f.read()
+
+    statements = [
+        _strip_sql_comments(stmt)
+        for stmt in sql.split(";")
+    ]
+    statements = [stmt for stmt in statements if stmt]
+
+    applied = 0
+    skipped = 0
+    print(f"Applying {benchmark} FK constraints to `{target_schema}` from {script_path}...")
+
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+    for statement in statements:
+        if statement.upper().startswith("SET "):
+            cursor.execute(statement)
+            continue
+
+        match = re.search(
+            r"\bADD\s+CONSTRAINT\s+`?([A-Za-z0-9_]+)`?",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            constraint_name = match.group(1)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = %s
+                  AND CONSTRAINT_NAME = %s
+                  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+            """, (target_schema, constraint_name))
+            if cursor.fetchone()[0]:
+                skipped += 1
+                continue
+
+        statement = re.sub(
+            r"^\s*ALTER\s+TABLE\s+`?([A-Za-z0-9_]+)`?",
+            rf"ALTER TABLE `{target_schema}`.`\1`",
+            statement,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        statement = re.sub(
+            r"\bREFERENCES\s+`?([A-Za-z0-9_]+)`?\s*\(",
+            rf"REFERENCES `{target_schema}`.`\1` (",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        cursor.execute(statement)
+        applied += 1
+
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+    print(f"      FK constraints applied: {applied}, skipped existing: {skipped}")
+
+
 # ----------------------------------------------------------------
 # 2. Per-table processing
 # ----------------------------------------------------------------
@@ -456,6 +601,51 @@ def build_fk_appendages(cursor, table, extractor=None):
        Uses same interleaved formula as referenced table, cycling as needed.
     3. Single-column FKs: Uses rand.range() for uniform distribution.
     """
+
+    def schema_columns(schema):
+        cursor.execute("""
+            SELECT TABLE_NAME, COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = %s
+        """, (schema,))
+        columns = {}
+        for table_name, column_name in cursor.fetchall():
+            columns.setdefault(table_name, set()).add(column_name)
+        return columns
+
+    def fallback_fk_rows():
+        source_columns = schema_columns(SOURCE_SCHEMA)
+        target_columns = schema_columns(TARGET_SCHEMA)
+        tables = set(source_columns) | set(target_columns)
+        candidates = []
+        if {"lineitem", "orders", "partsupp"}.issubset(tables):
+            candidates.extend(TPCH_FK_FALLBACKS)
+        if {"date_dim", "item", "customer", "store_sales"}.issubset(tables):
+            candidates.extend(TPCDS_FK_FALLBACKS)
+
+        rows = []
+        seen = set()
+        for name, child_table, ref_table, child_cols, ref_cols in candidates:
+            if child_table != table:
+                continue
+            if child_table not in source_columns or ref_table not in source_columns:
+                continue
+            if child_table not in target_columns or ref_table not in target_columns:
+                continue
+            if not all(col in source_columns[child_table] for col in child_cols):
+                continue
+            if not all(col in source_columns[ref_table] for col in ref_cols):
+                continue
+            if not all(col in target_columns[child_table] for col in child_cols):
+                continue
+            if not all(col in target_columns[ref_table] for col in ref_cols):
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            for child_col, ref_col in zip(child_cols, ref_cols):
+                rows.append((name, child_col, ref_table, ref_col))
+        return rows
 
     # Build canonical name map for target schema (handles case mismatches)
     cursor.execute("""
@@ -475,6 +665,10 @@ def build_fk_appendages(cursor, table, extractor=None):
         ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
     """, (SOURCE_SCHEMA, table))
     fk_rows = cursor.fetchall()
+    if not fk_rows:
+        fk_rows = fallback_fk_rows()
+        if fk_rows:
+            print(f"      Using {len(set(row[0] for row in fk_rows))} fallback FK relationship(s)")
     if not fk_rows:
         return {}
 
@@ -627,6 +821,26 @@ def build_fk_appendages(cursor, table, extractor=None):
         row = cursor.fetchone()
         sequence_type = row[0].lower() if row and row[0] else ""
         if sequence_type not in {"tinyint", "smallint", "mediumint", "int", "bigint"}:
+            return None
+
+        # Check if sequence_col is truly a low-cardinality sequence column.
+        # True sequence columns (like l_linenumber) have few distinct values (~7).
+        # High-cardinality ID columns (like ss_ticket_number) should NOT use this logic.
+        cursor.execute(
+            f"SELECT COUNT(DISTINCT `{sequence_col}`) FROM `{SOURCE_SCHEMA}`.`{table}`"
+        )
+        sequence_distinct = cursor.fetchone()[0]
+
+        # Threshold: sequence columns have << 0.1% of row count distinct values
+        # l_linenumber: 7 distinct / 6M rows = 0.0001%
+        # ss_ticket_number: 240K distinct / 2.8M rows = 8.5%
+        max_sequence_threshold = max(100, source_row_count // 1000)
+        if sequence_distinct > max_sequence_threshold:
+            print(
+                f"      Grouped PK {parent_col},{sequence_col}: "
+                f"SKIPPED ({sequence_col} has {sequence_distinct} distinct values - "
+                f"not a sequence column)"
+            )
             return None
 
         parent_fk = None
@@ -827,18 +1041,22 @@ def build_fk_appendages(cursor, table, extractor=None):
                     source_distinct = estimated_source_distinct(col)
                     fk_pk_cycle_length *= source_distinct
 
-        # Handle non-FK PK columns with mod() cycling
-        # MUST use mod() cycling (not frequency CASE) to ensure unique PK combinations
-        # when combined with FK+PK columns that also cycle
+        # Handle non-FK PK columns with div() grouping
+        # FK+PK columns use mod() (cycling), non-FK PK columns use div() (grouping)
+        # This combination avoids PK collisions:
+        #   Rows 1-12: ticket=1, item cycles 1->12
+        #   Rows 13-24: ticket=2, item cycles 1->12
         non_fk_pk_cols = pk_columns - pk_fk_columns
         for col in non_fk_pk_cols:
             if col in appendages:
                 continue
             source_distinct = estimated_source_distinct(col)
             min_val = synthetic_pk_base()
-            # Always use mod() for composite PK to ensure uniqueness
-            expr = f"mod(rownum-1, {source_distinct})+{min_val}"
-            print(f"      PK {col}: cycling mod({source_distinct})+{min_val}")
+            # Use proportional scaling: div((rownum-1)*D, N) maps N rows to exactly D distinct values
+            # This distributes values evenly - some appear floor(N/D) times, others ceil(N/D) times
+            # dbgen uses i128 arithmetic, so (rownum-1)*source_distinct won't overflow
+            expr = f"div((rownum-1)*{source_distinct},{source_row_count})+{min_val}"
+            print(f"      PK {col}: proportional div((rownum-1)*{source_distinct},{source_row_count})+{min_val} -> {source_distinct} distinct")
             appendages[col] = expr
 
         for constraint_name, fk_cols in constraints.items():
@@ -1654,6 +1872,24 @@ def main():
         if table_extractor is not extractor and table_extractor:
             table_extractor.close()
         print()
+
+    loaded_tables = [
+        table
+        for table in sorted_tables
+        if results.get(table, {}).get("loaded")
+    ]
+    failed_tables = [
+        table
+        for table in sorted_tables
+        if not results.get(table, {}).get("loaded")
+    ]
+    if failed_tables:
+        print(
+            "Skipping benchmark FK script because these table(s) did not load: "
+            + ", ".join(failed_tables)
+        )
+    else:
+        apply_benchmark_fk_script(cursor, TARGET_SCHEMA, loaded_tables)
 
     # --- Cleanup ---
     cursor.execute("SET FOREIGN_KEY_CHECKS = 1")

@@ -170,7 +170,7 @@ optimizer-level dimensions:
 | **Row Counts** | Total rows per table | Yes | No | Exact match |
 | **Distinct Counts** | Cardinality per column | Yes | No | <5% difference |
 | **Frequency Distributions** | Per-value counts for selected columns | Yes | No | Distribution-specific threshold |
-| **FK Integrity** | Orphan rows in child tables | Yes | Schema/FK metadata identifies relationships | 0 orphans |
+| **FK Integrity** | Orphan rows in child tables | Yes | Physical FK metadata, or built-in TPC-H/TPC-DS fallback relationships when constraints are absent | 0 orphans |
 | **Privacy** | Exact row overlap (MD5 hash) | Yes | Schema metadata identifies columns | <1% overlap |
 | **Histograms** | Optimizer-visible distribution shape | No | Yes | <5% total variation distance |
 | **Query Plans** | Optimizer execution strategy | No | Yes | Same plan shape or acceptable drift |

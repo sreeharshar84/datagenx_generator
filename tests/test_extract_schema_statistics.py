@@ -208,7 +208,8 @@ class StatisticsAnnotationTest(unittest.TestCase):
 
         annotated = annotate_table_with_statistics(extractor, "test", "web_sales")
 
-        self.assertIn("@ws_sold_time_sk := case mod(rownum-1,1)+1", annotated)
+        self.assertIn("@ws_sold_time_sk := case", annotated)
+        self.assertIn("mod((rownum - 0 - 1),85468)+0", annotated)
         shape_queries = [
             sql for sql, _params in extractor.cursor.queries
             if "SELECT frequency, COUNT(*) AS value_count" in sql

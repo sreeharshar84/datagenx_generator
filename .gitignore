@@ -18,7 +18,6 @@ papers/
 messages.md
 
 # Generated validation/result artifacts. Keep the historical checked-in samples.
-results/*
 !results/tpch_validation_report_sf1.html
 !results/tpch_validation_report_sf10.html
 !results/tpch_validation_report_sf5.html
