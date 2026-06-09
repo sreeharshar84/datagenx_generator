@@ -25,8 +25,10 @@ ENUM_TYPES = {"enum", "set"}
 # Above this threshold, fall back to random string generation.
 STRING_CARDINALITY_THRESHOLD = 1000
 EXACT_LOW_CARDINALITY_THRESHOLD = 1000
+# Frequency-shape FK generation fetches grouped counts, not source values.
+# The expression size is capped separately by FK_FREQUENCY_SHAPE_MAX_GROUPS.
 FK_FREQUENCY_SHAPE_MAX_DISTINCT = int(
-    os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_DISTINCT", "100000")
+    os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_DISTINCT", "2000000")
 )
 FK_FREQUENCY_SHAPE_MAX_GROUPS = int(
     os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_GROUPS", "10000")

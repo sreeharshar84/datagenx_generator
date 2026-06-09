@@ -23,8 +23,11 @@ COMPARE_HISTOGRAMS = False  # Disabled by default - histogram comparison is unre
 SKIP_VALIDATION = True
 ROWS_OVERRIDE = False
 TABLES_FILTER = None  # Optional: comma-separated list of tables to process
+COMPOSITE_PK_FREQUENCY_REGISTRY = {}
 
 from datagenx.generation.GenerateDbgen import (
+    FK_FREQUENCY_SHAPE_MAX_DISTINCT,
+    FK_FREQUENCY_SHAPE_MAX_GROUPS,
     annotate_table_with_histogram,
     build_single_fk_expression,
     topological_sort,
@@ -525,6 +528,38 @@ def _strip_sql_comments(statement):
     return "\n".join(lines).strip()
 
 
+def _cursor_connection(cursor):
+    return getattr(cursor, "_connection", None) or getattr(cursor, "connection", None)
+
+
+def _is_retriable_connection_error(exc):
+    return getattr(exc, "errno", None) in {2006, 2013, 2055}
+
+
+def _fk_constraint_exists(cursor, target_schema, constraint_name):
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = %s
+          AND CONSTRAINT_NAME = %s
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    """, (target_schema, constraint_name))
+    return bool(cursor.fetchone()[0])
+
+
+def _active_fk_ddl_count(cursor, target_schema, constraint_name):
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.PROCESSLIST
+        WHERE ID <> CONNECTION_ID()
+          AND INFO IS NOT NULL
+          AND INFO LIKE %s
+          AND INFO LIKE %s
+          AND INFO LIKE '%%ALTER TABLE%%'
+    """, (f"%`{target_schema}`%", f"%{constraint_name}%"))
+    return int(cursor.fetchone()[0] or 0)
+
+
 def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
     """Apply benchmark FK constraints after all target tables are loaded.
 
@@ -535,14 +570,14 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
     all tables have been loaded.
     """
     if DB_TYPE not in ("mysql", "tidb"):
-        return
+        return cursor
     if TABLES_FILTER:
         print("Skipping benchmark FK script for partial table run.")
-        return
+        return cursor
 
     benchmark, script_path = _benchmark_fk_script_for_tables(loaded_tables)
     if not benchmark or not script_path or not os.path.exists(script_path):
-        return
+        return cursor
 
     cursor.execute("""
         SELECT COUNT(*)
@@ -553,10 +588,10 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
     existing_fk_count = cursor.fetchone()[0]
     if existing_fk_count:
         print(
-            f"Skipping {benchmark} FK script for `{target_schema}`; "
-            f"{existing_fk_count} physical FK constraint(s) already exist."
+            f"{benchmark} FK script for `{target_schema}` found "
+            f"{existing_fk_count} existing physical FK constraint(s); "
+            "applying missing constraints only."
         )
-        return
 
     with open(script_path) as f:
         sql = f.read()
@@ -577,6 +612,7 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
             cursor.execute(statement)
             continue
 
+        constraint_name = None
         match = re.search(
             r"\bADD\s+CONSTRAINT\s+`?([A-Za-z0-9_]+)`?",
             statement,
@@ -584,14 +620,7 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
         )
         if match:
             constraint_name = match.group(1)
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
-                WHERE CONSTRAINT_SCHEMA = %s
-                  AND CONSTRAINT_NAME = %s
-                  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
-            """, (target_schema, constraint_name))
-            if cursor.fetchone()[0]:
+            if _fk_constraint_exists(cursor, target_schema, constraint_name):
                 skipped += 1
                 continue
 
@@ -608,11 +637,50 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
             statement,
             flags=re.IGNORECASE,
         )
-        cursor.execute(statement)
-        applied += 1
+        for attempt in range(1, 4):
+            try:
+                cursor.execute(statement)
+                applied += 1
+                break
+            except Error as exc:
+                if not _is_retriable_connection_error(exc) or attempt == 3:
+                    raise
+
+                print(
+                    f"      WARN: connection lost while applying FK DDL"
+                    f"{f' {constraint_name}' if constraint_name else ''}; "
+                    f"checking server-side DDL state before retry ({attempt}/2)"
+                )
+                conn = _cursor_connection(cursor)
+                if conn is None:
+                    raise
+                for wait_attempt in range(1, 61):
+                    cursor = _refresh_cursor(conn, cursor)
+                    cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+                    if constraint_name and _fk_constraint_exists(cursor, target_schema, constraint_name):
+                        applied += 1
+                        break
+                    active_ddl = (
+                        _active_fk_ddl_count(cursor, target_schema, constraint_name)
+                        if constraint_name else 0
+                    )
+                    if not active_ddl:
+                        break
+                    if wait_attempt == 60:
+                        raise
+                    print(
+                        f"      FK DDL {constraint_name} still active in TiDB; "
+                        f"waiting 30s before retry check"
+                    )
+                    time.sleep(30)
+                else:
+                    continue
+                if constraint_name and _fk_constraint_exists(cursor, target_schema, constraint_name):
+                    break
 
     cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
     print(f"      FK constraints applied: {applied}, skipped existing: {skipped}")
+    return cursor
 
 
 # ----------------------------------------------------------------
@@ -965,8 +1033,274 @@ def build_fk_appendages(cursor, table, extractor=None):
         )
         return result
 
+    def build_two_column_fk_pk_frequency_shape_appendages():
+        """Preserve FK+PK marginal frequency shape while keeping a 2-column PK unique.
+
+        Pattern:
+            PRIMARY KEY(fk_col, partner_col)
+            fk_col references a parent table
+            partner_col is not an FK
+
+        If no generated FK value needs more rows than the partner column's NDV,
+        the partner can cycle within each FK frequency band without duplicating
+        the composite key. Source input is only grouped frequency counts, never
+        source key literals.
+        """
+        if not is_composite_pk or len(pk_fk_columns) != 1 or len(non_fk_pk_cols) != 1:
+            return None
+
+        fk_col = next(iter(pk_fk_columns))
+        partner_col = next(iter(non_fk_pk_cols))
+
+        fk_info = None
+        for fk_cols in constraints.values():
+            for col, ref_table, ref_col in fk_cols:
+                if col == fk_col:
+                    fk_info = (ref_table, ref_col)
+                    break
+            if fk_info:
+                break
+        if fk_info is None:
+            return None
+
+        ref_table, ref_col = fk_info
+        actual_ref = tgt_canonical.get(ref_table.lower())
+        if actual_ref is None:
+            return None
+
+        fk_distinct = estimated_source_distinct(fk_col)
+        partner_distinct = estimated_source_distinct(partner_col)
+        if not fk_distinct or not partner_distinct:
+            return None
+        if fk_distinct > FK_FREQUENCY_SHAPE_MAX_DISTINCT:
+            return None
+
+        cursor.execute(
+            f"SELECT COUNT(DISTINCT `{ref_col}`), MIN(`{ref_col}`), MAX(`{ref_col}`) "
+            f"FROM `{TARGET_SCHEMA}`.`{actual_ref}`"
+        )
+        target_distinct, target_min, target_max = cursor.fetchone()
+        target_distinct = int(target_distinct or 0)
+        if target_distinct < fk_distinct or target_min is None or target_max is None:
+            return None
+        if not all(isinstance(value, int) and not isinstance(value, bool) for value in (target_min, target_max)):
+            return None
+        if target_max - target_min + 1 != target_distinct:
+            return None
+
+        valid_fk_predicate = f"`{fk_col}` IS NOT NULL"
+        if target_min > 0:
+            valid_fk_predicate = f"`{fk_col}` IS NOT NULL AND `{fk_col}` > 0"
+
+        cursor.execute(f"""
+            SELECT frequency, COUNT(*) AS value_count
+            FROM (
+                SELECT COUNT(*) AS frequency
+                FROM `{SOURCE_SCHEMA}`.`{table}`
+                WHERE {valid_fk_predicate}
+                GROUP BY `{fk_col}`
+            ) grouped
+            GROUP BY frequency
+            ORDER BY frequency
+        """)
+        groups = [
+            (int(frequency), int(value_count))
+            for frequency, value_count in cursor.fetchall()
+            if frequency and value_count
+        ]
+        if not groups or len(groups) > FK_FREQUENCY_SHAPE_MAX_GROUPS:
+            return None
+        if max(frequency for frequency, _value_count in groups) > partner_distinct:
+            return None
+
+        grouped_distinct = sum(value_count for _frequency, value_count in groups)
+        grouped_rows = sum(frequency * value_count for frequency, value_count in groups)
+        if grouped_distinct != fk_distinct or grouped_rows != source_row_count:
+            return None
+
+        fk_case_lines = []
+        cumulative_rows = 0
+        distinct_before = 0
+        for frequency, value_count in groups:
+            band_start = cumulative_rows + 1
+            band_rows = frequency * value_count
+            cumulative_rows += band_rows
+            group_start = target_min + distinct_before
+            fk_case_lines.append(
+                f"when rownum <= {cumulative_rows} then "
+                f"{group_start}+div(rownum-{band_start},{frequency})"
+            )
+            distinct_before += value_count
+
+        if distinct_before != fk_distinct:
+            return None
+
+        result = {
+            fk_col: f"""case
+    {' '.join(fk_case_lines)}
+    else {target_min + fk_distinct - 1}
+    end""",
+            partner_col: f"mod(rownum-1, {partner_distinct})+{synthetic_pk_base()}",
+        }
+        COMPOSITE_PK_FREQUENCY_REGISTRY[table.lower()] = {
+            "fk_col": fk_col,
+            "partner_col": partner_col,
+            "target_min": target_min,
+            "fk_distinct": fk_distinct,
+            "partner_distinct": partner_distinct,
+            "groups": groups,
+            "expressions": result,
+        }
+        print(
+            f"      FK+PK {fk_col} -> {actual_ref}.{ref_col}: "
+            f"frequency-shape PK/FK ({fk_distinct} distinct, "
+            f"{len(groups)} frequency groups); {partner_col} cycles {partner_distinct}"
+        )
+        return result
+
+    def build_frequency_shape_composite_fk_appendages_from_parent(fk_cols, actual_ref):
+        """Generate composite FK pairs from a registered synthetic parent PK shape."""
+        parent_shape = COMPOSITE_PK_FREQUENCY_REGISTRY.get(actual_ref.lower())
+        if not parent_shape or len(fk_cols) != 2:
+            return None
+
+        child_by_parent_col = {ref_col: col for col, _ref_table, ref_col in fk_cols}
+        parent_fk_col = parent_shape["fk_col"]
+        parent_partner_col = parent_shape["partner_col"]
+        child_fk_col = child_by_parent_col.get(parent_fk_col)
+        child_partner_col = child_by_parent_col.get(parent_partner_col)
+        if not child_fk_col or not child_partner_col:
+            return None
+
+        child_distinct = estimated_source_distinct(child_fk_col)
+        if not child_distinct or child_distinct > FK_FREQUENCY_SHAPE_MAX_DISTINCT:
+            return None
+
+        valid_fk_predicate = f"`{child_fk_col}` IS NOT NULL"
+        if parent_shape["target_min"] > 0:
+            valid_fk_predicate = f"`{child_fk_col}` IS NOT NULL AND `{child_fk_col}` > 0"
+
+        cursor.execute(f"""
+            SELECT frequency, COUNT(*) AS value_count
+            FROM (
+                SELECT COUNT(*) AS frequency
+                FROM `{SOURCE_SCHEMA}`.`{table}`
+                WHERE {valid_fk_predicate}
+                GROUP BY `{child_fk_col}`
+            ) grouped
+            GROUP BY frequency
+            ORDER BY frequency
+        """)
+        child_groups = [
+            (int(frequency), int(value_count))
+            for frequency, value_count in cursor.fetchall()
+            if frequency and value_count
+        ]
+        if not child_groups or len(child_groups) > FK_FREQUENCY_SHAPE_MAX_GROUPS:
+            return None
+
+        grouped_distinct = sum(value_count for _frequency, value_count in child_groups)
+        grouped_rows = sum(frequency * value_count for frequency, value_count in child_groups)
+        if grouped_distinct != child_distinct or grouped_rows != source_row_count:
+            return None
+
+        parent_segments = []
+        value_start = parent_shape["target_min"]
+        rows_before = 0
+        for parent_frequency, value_count in parent_shape["groups"]:
+            parent_segments.append((parent_frequency, value_count, value_start, rows_before))
+            value_start += value_count
+            rows_before += parent_frequency * value_count
+
+        allocations = []
+        segment_index = 0
+        used_in_segment = 0
+        skipped_values = 0
+        for child_frequency, child_value_count in child_groups:
+            remaining = child_value_count
+            while remaining > 0:
+                while segment_index < len(parent_segments):
+                    parent_frequency, parent_value_count, _value_start, _rows_before = parent_segments[segment_index]
+                    available = parent_value_count - used_in_segment
+                    if available > 0 and parent_frequency >= child_frequency:
+                        break
+                    skipped_values += max(available, 0)
+                    segment_index += 1
+                    used_in_segment = 0
+                if segment_index >= len(parent_segments):
+                    return None
+
+                parent_frequency, parent_value_count, value_start, rows_before = parent_segments[segment_index]
+                available = parent_value_count - used_in_segment
+                take = min(remaining, available)
+                allocations.append((
+                    child_frequency,
+                    take,
+                    parent_frequency,
+                    value_start + used_in_segment,
+                    rows_before + (used_in_segment * parent_frequency),
+                ))
+                remaining -= take
+                used_in_segment += take
+
+        if not allocations:
+            return None
+
+        fk_case_lines = []
+        partner_case_lines = []
+        cumulative_rows = 0
+        for child_frequency, value_count, parent_frequency, value_start, parent_rows_before in allocations:
+            band_start = cumulative_rows + 1
+            band_rows = child_frequency * value_count
+            cumulative_rows += band_rows
+            local_row = f"rownum-{band_start}"
+            child_value_offset = f"div({local_row},{child_frequency})"
+            child_occurrence_offset = f"mod({local_row},{child_frequency})"
+            spread_parent_offset = (
+                f"div({child_occurrence_offset}*{parent_frequency},{child_frequency})"
+            )
+            parent_row0 = (
+                f"{parent_rows_before}+{child_value_offset}*{parent_frequency}+{spread_parent_offset}"
+            )
+            fk_case_lines.append(
+                f"when rownum <= {cumulative_rows} then {value_start}+{child_value_offset}"
+            )
+            partner_case_lines.append(
+                f"when rownum <= {cumulative_rows} then "
+                f"mod({parent_row0}, {parent_shape['partner_distinct']})+{synthetic_pk_base()}"
+            )
+
+        if cumulative_rows != source_row_count:
+            return None
+
+        result = {
+            child_fk_col: f"""case
+    {' '.join(fk_case_lines)}
+    else {allocations[-1][3] + allocations[-1][1] - 1}
+    end""",
+            child_partner_col: f"""case
+    {' '.join(partner_case_lines)}
+    else {synthetic_pk_base()}
+    end""",
+        }
+        skipped = f", skipped {skipped_values} parent value(s)" if skipped_values else ""
+        print(
+            f"      Composite FK {child_fk_col},{child_partner_col} -> "
+            f"{actual_ref}.{parent_fk_col},{parent_partner_col}: "
+            f"frequency-shape parent tuples ({child_distinct} distinct, "
+            f"{len(child_groups)} child frequency groups{skipped})"
+        )
+        return result
+
     def build_composite_fk_appendages_from_parent(fk_cols, actual_ref):
         """Generate child composite-FK columns from existing parent key tuples."""
+        frequency_shape_appendages = build_frequency_shape_composite_fk_appendages_from_parent(
+            fk_cols,
+            actual_ref,
+        )
+        if frequency_shape_appendages:
+            return frequency_shape_appendages
+
         cursor.execute(f"SELECT COUNT(*) FROM `{TARGET_SCHEMA}`.`{actual_ref}`")
         ref_row_count = cursor.fetchone()[0]
         if not ref_row_count:
@@ -1134,10 +1468,15 @@ def build_fk_appendages(cursor, table, extractor=None):
         # Partial FK+PK case: FK columns in PK use mod() cycling
         # Non-FK PK columns use div() grouping to coordinate (avoid PK collisions)
         # Composite FKs (not in PK) use n-cycling to generate valid pairs
+        non_fk_pk_cols = pk_columns - pk_fk_columns
 
         grouped_appendages = build_grouped_parent_sequence_appendages()
         if grouped_appendages:
             appendages.update(grouped_appendages)
+
+        frequency_shape_appendages = build_two_column_fk_pk_frequency_shape_appendages()
+        if frequency_shape_appendages:
+            appendages.update(frequency_shape_appendages)
 
         # First, calculate the cycle length for FK+PK columns (product of their distinct counts)
         fk_pk_cycle_length = 1
@@ -1152,7 +1491,6 @@ def build_fk_appendages(cursor, table, extractor=None):
         # This combination avoids PK collisions:
         #   Rows 1-12: ticket=1, item cycles 1->12
         #   Rows 13-24: ticket=2, item cycles 1->12
-        non_fk_pk_cols = pk_columns - pk_fk_columns
         for col in non_fk_pk_cols:
             if col in appendages:
                 continue
@@ -1857,6 +2195,7 @@ def main():
     global HOST, USER, PASSWORD, SOURCE_SCHEMA, TARGET_SCHEMA, ROWS_COUNT, DB_TYPE, DB_PORT, ROWS_OVERRIDE, TABLES_FILTER
 
     start_time = time.time()
+    COMPOSITE_PK_FREQUENCY_REGISTRY.clear()
 
     # --- Setup directories ---
     os.makedirs(DBGEN_FILES_DIR, exist_ok=True)
@@ -1993,7 +2332,7 @@ def main():
             + ", ".join(failed_tables)
         )
     else:
-        apply_benchmark_fk_script(cursor, TARGET_SCHEMA, loaded_tables)
+        cursor = apply_benchmark_fk_script(cursor, TARGET_SCHEMA, loaded_tables)
 
     # --- Cleanup ---
     cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
