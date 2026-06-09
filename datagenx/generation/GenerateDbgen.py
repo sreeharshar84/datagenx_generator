@@ -25,6 +25,12 @@ ENUM_TYPES = {"enum", "set"}
 # Above this threshold, fall back to random string generation.
 STRING_CARDINALITY_THRESHOLD = 1000
 EXACT_LOW_CARDINALITY_THRESHOLD = 1000
+FK_FREQUENCY_SHAPE_MAX_DISTINCT = int(
+    os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_DISTINCT", "100000")
+)
+FK_FREQUENCY_SHAPE_MAX_GROUPS = int(
+    os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_GROUPS", "10000")
+)
 
 # Synthetic base date for generating date values.
 # We use a synthetic date range to avoid exposing actual source data dates.
@@ -286,6 +292,23 @@ def build_single_fk_expression(
     if exact_low_cardinality:
         return exact_low_cardinality
 
+    frequency_shape = _build_frequency_shape_fk_expression(
+        cursor,
+        source_db,
+        target_db,
+        table,
+        col,
+        ref_table,
+        ref_col,
+        actual_distinct,
+        source_row_count,
+        valid_fk_predicate,
+        null_row_count,
+        zero_row_count,
+    )
+    if frequency_shape:
+        return frequency_shape
+
     # Decision based on coverage AND distinct_ratio:
     # - If distinct_ratio > 0.5: use mod() cycling (random would cause collisions)
     # - Else if coverage < 20%: try sparse weighted approach (preserves distribution shape)
@@ -385,14 +408,14 @@ def _build_exact_low_cardinality_fk_expression(
         return None
 
     cursor.execute(f"""
-        SELECT `{col}`, COUNT(*) AS cnt
+        SELECT COUNT(*) AS cnt
         FROM `{source_db}`.`{table}`
         WHERE {valid_fk_predicate}
         GROUP BY `{col}`
-        ORDER BY `{col}`
+        ORDER BY cnt DESC
     """)
-    source_frequencies = cursor.fetchall()
-    if not source_frequencies or len(source_frequencies) != actual_distinct:
+    source_counts = [int(row[0]) for row in cursor.fetchall()]
+    if not source_counts or len(source_counts) != actual_distinct:
         return None
 
     cursor.execute(f"""
@@ -413,7 +436,7 @@ def _build_exact_low_cardinality_fk_expression(
     if null_row_count:
         cumulative += int(null_row_count)
         case_lines.append(f"when rownum <= {cumulative} then NULL")
-    for target_value, (_source_value, count) in zip(sampled_values, source_frequencies):
+    for target_value, count in zip(sampled_values, source_counts):
         if count <= 0:
             continue
         cumulative += int(count)
@@ -427,6 +450,105 @@ def _build_exact_low_cardinality_fk_expression(
     else {_dbgen_literal(sampled_values[-1])}
     end"""
     description = f"exact low-cardinality FK frequencies ({actual_distinct} distinct)"
+    return (expression, description)
+
+
+def _build_frequency_shape_fk_expression(
+    cursor,
+    source_db,
+    target_db,
+    table,
+    col,
+    ref_table,
+    ref_col,
+    actual_distinct,
+    source_row_count,
+    valid_fk_predicate,
+    null_row_count=0,
+    zero_row_count=0,
+):
+    """Build a compressed FK expression that preserves frequency shape.
+
+    Source input is only grouped cardinality information: how many distinct FK
+    values share the same row frequency. Source FK literals are never fetched.
+    Generated values are contiguous synthetic keys from the target parent table.
+    """
+    if not actual_distinct or actual_distinct > FK_FREQUENCY_SHAPE_MAX_DISTINCT:
+        return None
+    if not source_row_count or source_row_count <= 0:
+        return None
+
+    cursor.execute(f"""
+        SELECT COUNT(DISTINCT `{ref_col}`), MIN(`{ref_col}`), MAX(`{ref_col}`)
+        FROM `{target_db}`.`{ref_table}`
+    """)
+    target_distinct, target_min, target_max = cursor.fetchone()
+    target_distinct = int(target_distinct or 0)
+    if target_distinct < actual_distinct or target_min is None or target_max is None:
+        return None
+
+    if not all(isinstance(value, int) and not isinstance(value, bool) for value in (target_min, target_max)):
+        return None
+    if target_max - target_min + 1 != target_distinct:
+        return None
+
+    cursor.execute(f"""
+        SELECT frequency, COUNT(*) AS value_count
+        FROM (
+            SELECT COUNT(*) AS frequency
+            FROM `{source_db}`.`{table}`
+            WHERE {valid_fk_predicate}
+            GROUP BY `{col}`
+        ) grouped
+        GROUP BY frequency
+        ORDER BY frequency DESC
+    """)
+    frequency_groups = [(int(frequency), int(value_count)) for frequency, value_count in cursor.fetchall()]
+    if not frequency_groups or len(frequency_groups) > FK_FREQUENCY_SHAPE_MAX_GROUPS:
+        return None
+
+    grouped_distinct = sum(value_count for _frequency, value_count in frequency_groups)
+    grouped_rows = sum(frequency * value_count for frequency, value_count in frequency_groups)
+    if grouped_distinct != actual_distinct or grouped_rows != source_row_count:
+        return None
+
+    case_lines = []
+    unknown_rows = int(zero_row_count or 0) + int(null_row_count or 0)
+    cumulative = 0
+    if zero_row_count:
+        cumulative += int(zero_row_count)
+        case_lines.append(f"when rownum <= {cumulative} then 0")
+    if null_row_count:
+        cumulative += int(null_row_count)
+        case_lines.append(f"when rownum <= {cumulative} then NULL")
+
+    valid_rows_before = 0
+    distinct_before = 0
+    for frequency, value_count in frequency_groups:
+        if frequency <= 0 or value_count <= 0:
+            continue
+        group_rows = frequency * value_count
+        cumulative = unknown_rows + valid_rows_before + group_rows
+        group_start = target_min + distinct_before
+        valid_row_start = unknown_rows + valid_rows_before + 1
+        case_lines.append(
+            f"when rownum <= {cumulative} then "
+            f"{group_start}+div(rownum-{valid_row_start},{frequency})"
+        )
+        valid_rows_before += group_rows
+        distinct_before += value_count
+
+    if not case_lines or distinct_before != actual_distinct:
+        return None
+
+    expression = f"""case
+    {' '.join(case_lines)}
+    else {target_min + actual_distinct - 1}
+    end"""
+    description = (
+        f"frequency-shape FK ({actual_distinct} distinct, "
+        f"{len(frequency_groups)} frequency groups)"
+    )
     return (expression, description)
 
 
