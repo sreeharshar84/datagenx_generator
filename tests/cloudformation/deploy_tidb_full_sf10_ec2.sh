@@ -17,6 +17,7 @@ ARTIFACT_PREFIX="${ARTIFACT_PREFIX:-full-sf${TPCH_SCALE_FACTOR}}"
 SCHEMA_NAMESPACE="${SCHEMA_NAMESPACE:-}"
 REUSE_SOURCE_FILES="${REUSE_SOURCE_FILES:-0}"
 REUSE_LOADED_SOURCE_SCHEMA="${REUSE_LOADED_SOURCE_SCHEMA:-0}"
+DATAGENX_APPLY_BENCHMARK_FK_DDL="${DATAGENX_APPLY_BENCHMARK_FK_DDL:-1}"
 TEMPLATE_FILE="${TEMPLATE_FILE:-tests/cloudformation/tidb-full-sf10.yml}"
 TIDB_ENV_FILE="${TIDB_ENV_FILE:-.env}"
 TIDB_ENV_PARAM_NAME="${TIDB_ENV_PARAM_NAME:-/datagenx/$STACK_NAME/tidb-env}"
@@ -124,7 +125,7 @@ start_remote_run() {
     local bucket="$2"
     local tidb_env_param_name="$3"
 
-    python3 - "$SSM_PARAMS" "$bucket" "$AWS_REGION" "$RUN_PROFILE" "$TPCH_SCALE_FACTOR" "$TPCDS_SCALE_FACTOR" "$ARTIFACT_PREFIX" "$SCHEMA_NAMESPACE" "$REUSE_SOURCE_FILES" "$REUSE_LOADED_SOURCE_SCHEMA" "$tidb_env_param_name" <<'PY'
+    python3 - "$SSM_PARAMS" "$bucket" "$AWS_REGION" "$RUN_PROFILE" "$TPCH_SCALE_FACTOR" "$TPCDS_SCALE_FACTOR" "$ARTIFACT_PREFIX" "$SCHEMA_NAMESPACE" "$REUSE_SOURCE_FILES" "$REUSE_LOADED_SOURCE_SCHEMA" "$DATAGENX_APPLY_BENCHMARK_FK_DDL" "$tidb_env_param_name" <<'PY'
 import json
 import sys
 
@@ -139,6 +140,7 @@ import sys
     schema_namespace,
     reuse_source_files,
     reuse_loaded_source_schema,
+    apply_benchmark_fk_ddl,
     tidb_env_param_name,
 ) = sys.argv[1:]
 commands = [
@@ -173,6 +175,7 @@ commands = [
     f"export SCHEMA_NAMESPACE='{schema_namespace}'\n"
     f"export REUSE_SOURCE_FILES='{reuse_source_files}'\n"
     f"export REUSE_LOADED_SOURCE_SCHEMA='{reuse_loaded_source_schema}'\n"
+    f"export DATAGENX_APPLY_BENCHMARK_FK_DDL='{apply_benchmark_fk_ddl}'\n"
     f"export TPCH_SCALE_FACTOR='{tpch_sf}'\n"
     f"export TPCDS_SCALE_FACTOR='{tpcds_sf}'\n"
     f"exec tests/cloudformation/run_tidb_full_sf10_remote.sh '{profile}'\n"

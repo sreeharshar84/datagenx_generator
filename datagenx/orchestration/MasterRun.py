@@ -24,6 +24,7 @@ SKIP_VALIDATION = True
 ROWS_OVERRIDE = False
 TABLES_FILTER = None  # Optional: comma-separated list of tables to process
 COMPOSITE_PK_FREQUENCY_REGISTRY = {}
+APPLY_BENCHMARK_FK_DDL = os.environ.get("DATAGENX_APPLY_BENCHMARK_FK_DDL", "1") != "0"
 
 from datagenx.generation.GenerateDbgen import (
     FK_FREQUENCY_SHAPE_MAX_DISTINCT,
@@ -569,6 +570,9 @@ def apply_benchmark_fk_script(cursor, target_schema, loaded_tables):
     the same relationships. The SQL scripts are intentionally applied only after
     all tables have been loaded.
     """
+    if not APPLY_BENCHMARK_FK_DDL:
+        print("Skipping benchmark FK script because DATAGENX_APPLY_BENCHMARK_FK_DDL=0.")
+        return cursor
     if DB_TYPE not in ("mysql", "tidb"):
         return cursor
     if TABLES_FILTER:
