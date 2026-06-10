@@ -118,6 +118,31 @@ def _load_histograms_singlestore(cursor, schema, table):
     return histograms
 
 
+def _is_tidb_memory_limit_error(exc):
+    message = str(exc).lower()
+    return (
+        getattr(exc, "errno", None) == 8176
+        or "tidb_server_memory_limit" in message
+        or "memory limit" in message
+    )
+
+
+def _analyze_target_table(cursor, table):
+    analyze_suffix = " ALL COLUMNS" if DB_TYPE == 'tidb' else ""
+    try:
+        cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}`{analyze_suffix}")
+        cursor.fetchall()
+    except Error as exc:
+        if DB_TYPE != 'tidb' or not _is_tidb_memory_limit_error(exc):
+            raise
+        print(
+            f"      Warning: TiDB ANALYZE ALL COLUMNS exceeded memory for {table}; "
+            "falling back to ANALYZE TABLE."
+        )
+        cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}`")
+        cursor.fetchall()
+
+
 def _load_histograms_with_extractor(db_type, schema, table):
     """Load histograms through a schema extractor for non-MySQL engines."""
     extractor = create_schema_extractor(db_type, HOST, USER, PASSWORD, schema, DB_PORT)
@@ -712,7 +737,8 @@ def build_fk_appendages(cursor, table, extractor=None):
             columns.setdefault(table_name, set()).add(column_name)
         return columns
 
-    def fallback_fk_rows():
+    def fallback_fk_rows(candidate_table=None):
+        candidate_table = candidate_table or table
         source_columns = schema_columns(SOURCE_SCHEMA)
         target_columns = schema_columns(TARGET_SCHEMA)
         tables = set(source_columns) | set(target_columns)
@@ -725,7 +751,7 @@ def build_fk_appendages(cursor, table, extractor=None):
         rows = []
         seen = set()
         for name, child_table, ref_table, child_cols, ref_cols in candidates:
-            if child_table != table:
+            if child_table != candidate_table:
                 continue
             if child_table not in source_columns or ref_table not in source_columns:
                 continue
@@ -744,6 +770,32 @@ def build_fk_appendages(cursor, table, extractor=None):
                 rows.append((name, child_col, ref_table, ref_col))
         return rows
 
+    def fk_rows_for_table(table_name):
+        cursor.execute("""
+            SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = %s
+              AND TABLE_NAME = %s
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
+        """, (SOURCE_SCHEMA, table_name))
+        rows = cursor.fetchall()
+        if not rows:
+            rows = fallback_fk_rows(table_name)
+            if rows and table_name == table:
+                print(f"      Using {len(set(row[0] for row in rows))} fallback FK relationship(s)")
+        return rows
+
+    def primary_key_columns(table_name):
+        cursor.execute("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = %s
+              AND TABLE_NAME = %s
+              AND CONSTRAINT_NAME = 'PRIMARY'
+        """, (SOURCE_SCHEMA, table_name))
+        return {r[0] for r in cursor.fetchall()}
+
     # Build canonical name map for target schema (handles case mismatches)
     cursor.execute("""
         SELECT TABLE_NAME
@@ -752,20 +804,16 @@ def build_fk_appendages(cursor, table, extractor=None):
     """, (TARGET_SCHEMA,))
     tgt_canonical = {t[0].lower(): t[0] for t in cursor.fetchall()}
 
-    # FK columns grouped by constraint name
+    # Build canonical name map for source schema (handles case mismatches)
     cursor.execute("""
-        SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = %s
-          AND TABLE_NAME = %s
-          AND REFERENCED_TABLE_NAME IS NOT NULL
-        ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
-    """, (SOURCE_SCHEMA, table))
-    fk_rows = cursor.fetchall()
-    if not fk_rows:
-        fk_rows = fallback_fk_rows()
-        if fk_rows:
-            print(f"      Using {len(set(row[0] for row in fk_rows))} fallback FK relationship(s)")
+        SELECT TABLE_NAME
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE'
+    """, (SOURCE_SCHEMA,))
+    src_canonical = {t[0].lower(): t[0] for t in cursor.fetchall()}
+
+    # FK columns grouped by constraint name
+    fk_rows = fk_rows_for_table(table)
     if not fk_rows:
         return {}
 
@@ -776,14 +824,7 @@ def build_fk_appendages(cursor, table, extractor=None):
         constraints[constraint_name].append((col, ref_table, ref_col))
 
     # PK columns for this table
-    cursor.execute("""
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = %s
-          AND TABLE_NAME = %s
-          AND CONSTRAINT_NAME = 'PRIMARY'
-    """, (SOURCE_SCHEMA, table))
-    pk_columns = {r[0] for r in cursor.fetchall()}
+    pk_columns = primary_key_columns(table)
 
     # Get source row count for this table
     cursor.execute(f"SELECT COUNT(*) FROM `{SOURCE_SCHEMA}`.`{table}`")
@@ -1162,9 +1203,105 @@ def build_fk_appendages(cursor, table, extractor=None):
         )
         return result
 
+    def reconstruct_frequency_shape_parent_shape(fk_cols, actual_ref):
+        """Rebuild a registered 2-column parent PK shape for child-only reruns.
+
+        Full MasterRun executions register this when the parent table is
+        generated. A targeted child-table rerun starts with an empty in-memory
+        registry, so reconstruct it from metadata and frequency counts.
+        """
+        if len(fk_cols) != 2:
+            return None
+
+        source_ref = src_canonical.get(actual_ref.lower(), actual_ref)
+        ref_cols = [ref_col for _col, _ref_table, ref_col in fk_cols]
+        parent_pk_cols = primary_key_columns(source_ref)
+        if not set(ref_cols).issubset(parent_pk_cols):
+            return None
+
+        parent_fk_rows = fk_rows_for_table(source_ref)
+        parent_fk_cols = {col for _name, col, _ref_table, _ref_col in parent_fk_rows}
+        parent_fk_ref_cols = [ref_col for ref_col in ref_cols if ref_col in parent_fk_cols]
+        if len(parent_fk_ref_cols) != 1:
+            return None
+
+        parent_fk_col = parent_fk_ref_cols[0]
+        parent_partner_col = next(ref_col for ref_col in ref_cols if ref_col != parent_fk_col)
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM `{SOURCE_SCHEMA}`.`{source_ref}`"
+        )
+        parent_source_rows = int(cursor.fetchone()[0] or 0)
+        if parent_source_rows <= 0:
+            return None
+
+        cursor.execute(
+            f"SELECT COUNT(*), COUNT(DISTINCT `{parent_fk_col}`), "
+            f"MIN(`{parent_fk_col}`), COUNT(DISTINCT `{parent_partner_col}`) "
+            f"FROM `{TARGET_SCHEMA}`.`{actual_ref}`"
+        )
+        target_rows, target_distinct, target_min, partner_distinct = cursor.fetchone()
+        target_rows = int(target_rows or 0)
+        target_distinct = int(target_distinct or 0)
+        partner_distinct = int(partner_distinct or 0)
+        if target_rows <= 0 or target_min is None or target_distinct <= 0 or partner_distinct <= 0:
+            return None
+
+        valid_fk_predicate = f"`{parent_fk_col}` IS NOT NULL"
+        try:
+            if float(target_min) > 0:
+                valid_fk_predicate += f" AND `{parent_fk_col}` > 0"
+        except (TypeError, ValueError):
+            pass
+
+        cursor.execute(f"""
+            SELECT frequency, COUNT(*) AS value_count
+            FROM (
+                SELECT COUNT(*) AS frequency
+                FROM `{SOURCE_SCHEMA}`.`{source_ref}`
+                WHERE {valid_fk_predicate}
+                GROUP BY `{parent_fk_col}`
+            ) grouped
+            GROUP BY frequency
+            ORDER BY frequency
+        """)
+        groups = [
+            (int(frequency), int(value_count))
+            for frequency, value_count in cursor.fetchall()
+            if frequency and value_count
+        ]
+        if not groups or len(groups) > FK_FREQUENCY_SHAPE_MAX_GROUPS:
+            return None
+
+        fk_distinct = sum(value_count for _frequency, value_count in groups)
+        grouped_rows = sum(frequency * value_count for frequency, value_count in groups)
+        if grouped_rows != parent_source_rows or target_rows != parent_source_rows:
+            return None
+        if target_distinct < fk_distinct:
+            return None
+
+        parent_shape = {
+            "fk_col": parent_fk_col,
+            "partner_col": parent_partner_col,
+            "target_min": target_min,
+            "fk_distinct": fk_distinct,
+            "partner_distinct": partner_distinct,
+            "groups": groups,
+            "expressions": {},
+        }
+        COMPOSITE_PK_FREQUENCY_REGISTRY[actual_ref.lower()] = parent_shape
+        print(
+            f"      Reconstructed parent frequency-shape PK for {actual_ref}: "
+            f"{parent_fk_col} ({fk_distinct} distinct, {len(groups)} groups), "
+            f"{parent_partner_col} cycles {partner_distinct}"
+        )
+        return parent_shape
+
     def build_frequency_shape_composite_fk_appendages_from_parent(fk_cols, actual_ref):
         """Generate composite FK pairs from a registered synthetic parent PK shape."""
         parent_shape = COMPOSITE_PK_FREQUENCY_REGISTRY.get(actual_ref.lower())
+        if not parent_shape:
+            parent_shape = reconstruct_frequency_shape_parent_shape(fk_cols, actual_ref)
         if not parent_shape or len(fk_cols) != 2:
             return None
 
@@ -2079,9 +2216,7 @@ def step_c_create_insert_validate(cursor, table):
     if DB_TYPE == 'mysql':
         cursor.execute(f"ANALYZE TABLE `{SOURCE_SCHEMA}`.`{table}`")
         cursor.fetchall()
-    analyze_suffix = " ALL COLUMNS" if DB_TYPE == 'tidb' else ""
-    cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}`{analyze_suffix}")
-    cursor.fetchall()
+    _analyze_target_table(cursor, table)
 
     # --- DDL validation ---
     cursor.execute(f"SHOW CREATE TABLE `{SOURCE_SCHEMA}`.`{table}`")

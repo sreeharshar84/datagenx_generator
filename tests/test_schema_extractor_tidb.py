@@ -18,7 +18,12 @@ mysql_pkg.connector = connector_mod
 sys.modules.setdefault("mysql", mysql_pkg)
 sys.modules.setdefault("mysql.connector", connector_mod)
 
-from lib.schema_extractor import TiDBExtractor, available_extractor_types, connection_kwargs_for
+from lib.schema_extractor import (
+    Error as SchemaExtractorError,
+    TiDBExtractor,
+    available_extractor_types,
+    connection_kwargs_for,
+)
 
 
 class FakeCursor:
@@ -134,6 +139,24 @@ class FakePartialStatsCursor(FakeCursor):
             super().execute(sql, params)
 
 
+class FakeAnalyzeCursor:
+    def __init__(self):
+        self.executed = []
+        self.column_names = []
+        self._rows = []
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+        if sql.endswith("ALL COLUMNS"):
+            error = SchemaExtractorError("exceeded tidb_server_memory_limit")
+            error.errno = 8176
+            raise error
+        self._rows = []
+
+    def fetchall(self):
+        return self._rows
+
+
 class TiDBExtractorTest(unittest.TestCase):
     def test_factory_lists_tidb(self):
         self.assertIn("tidb", available_extractor_types())
@@ -220,6 +243,18 @@ class TiDBExtractorTest(unittest.TestCase):
         self.assertEqual(extractor.get_column_cardinalities("orders"), {"o_orderkey": 4})
         executed_sql = [sql for sql, _params in extractor.cursor.executed]
         self.assertFalse(any("COUNT(DISTINCT" in sql for sql in executed_sql))
+
+    def test_analyze_table_falls_back_when_all_columns_hits_memory_limit(self):
+        extractor = TiDBExtractor("127.0.0.1", "root", "", "test")
+        extractor.cursor = FakeAnalyzeCursor()
+
+        extractor.analyze_table("web_sales")
+
+        executed_sql = [sql for sql, _params in extractor.cursor.executed]
+        self.assertEqual(executed_sql, [
+            "ANALYZE TABLE `test`.`web_sales` ALL COLUMNS",
+            "ANALYZE TABLE `test`.`web_sales`",
+        ])
 
 
 if __name__ == "__main__":

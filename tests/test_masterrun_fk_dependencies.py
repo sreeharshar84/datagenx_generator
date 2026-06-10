@@ -92,6 +92,9 @@ class PartialFkPkAppendageCursor:
 
         if "FROM INFORMATION_SCHEMA.TABLES" in normalized:
             self._rows = [("item",), ("sales",)]
+        elif normalized == "SELECT COUNT(*), COUNT(DISTINCT `item_sk`), MIN(`item_sk`), COUNT(DISTINCT `order_no`) FROM `tgt`.`sales`":
+            self._row = (1000, 5, 1, 200)
+            self._rows = [self._row]
         elif "REFERENCED_TABLE_NAME IS NOT NULL" in normalized:
             if table == "sales":
                 self._rows = [("sales_item_fk", "item_sk", "item", "item_sk")]
@@ -197,6 +200,41 @@ class MasterRunFkAppendageTests(unittest.TestCase):
         try:
             cursor = PartialFkPkAppendageCursor()
             masterrun.build_fk_appendages(cursor, "sales")
+            appendages = masterrun.build_fk_appendages(cursor, "returns")
+        finally:
+            (
+                masterrun.SOURCE_SCHEMA,
+                masterrun.TARGET_SCHEMA,
+                masterrun.DB_TYPE,
+                masterrun.ROWS_OVERRIDE,
+            ) = old_values
+            masterrun.COMPOSITE_PK_FREQUENCY_REGISTRY.clear()
+
+        self.assertIn("item_sk", appendages)
+        self.assertIn("order_no", appendages)
+        self.assertIn("when rownum <= 30 then 1+div(rownum-1,6)", appendages["item_sk"])
+        self.assertIn("div(mod(rownum-1,6)*200,6)", appendages["order_no"])
+
+        source_literal_queries = [
+            sql for sql, _params in cursor.queries
+            if "SELECT `item_sk`" in sql
+        ]
+        self.assertEqual([], source_literal_queries)
+
+    def test_child_composite_fk_reconstructs_parent_frequency_shape_for_child_only_rerun(self):
+        old_values = (
+            masterrun.SOURCE_SCHEMA,
+            masterrun.TARGET_SCHEMA,
+            masterrun.DB_TYPE,
+            masterrun.ROWS_OVERRIDE,
+        )
+        masterrun.COMPOSITE_PK_FREQUENCY_REGISTRY.clear()
+        masterrun.SOURCE_SCHEMA = "src"
+        masterrun.TARGET_SCHEMA = "tgt"
+        masterrun.DB_TYPE = "mysql"
+        masterrun.ROWS_OVERRIDE = False
+        try:
+            cursor = PartialFkPkAppendageCursor()
             appendages = masterrun.build_fk_appendages(cursor, "returns")
         finally:
             (
