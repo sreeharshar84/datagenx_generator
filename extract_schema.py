@@ -104,6 +104,13 @@ def _numeric_ndv_expression(ddl_line, distinct_count):
     return f"({ordinal}) / {scale}"
 
 
+def _is_integer_column_type(col_type):
+    """Return whether a normalized column type is integer-like."""
+    if not col_type:
+        return False
+    return bool(re.search(r"\b(tinyint|smallint|mediumint|int|integer|bigint)\b", col_type))
+
+
 def _temporal_ndv_expression(col_type, distinct_count):
     """Generate synthetic temporal values preserving NDV."""
     distinct_count = _positive_int(distinct_count)
@@ -142,6 +149,174 @@ def _grouped_ndv_expression(distinct_count, row_count):
     return f"mod(rownum-1, {distinct_count}) + 1"
 
 
+def _get_frequency_shape_groups(cursor, database, table, column):
+    """Return grouped per-value frequencies without selecting source values."""
+    cursor.execute(f"""
+        SELECT frequency, COUNT(*) AS value_count
+        FROM (
+            SELECT COUNT(*) AS frequency
+            FROM `{database}`.`{table}`
+            WHERE `{column}` IS NOT NULL
+            GROUP BY `{column}`
+        ) grouped
+        GROUP BY frequency
+        ORDER BY frequency
+    """)
+    groups = []
+    for frequency, value_count in cursor.fetchall():
+        frequency = _positive_int(frequency)
+        value_count = _positive_int(value_count)
+        if frequency and value_count:
+            groups.append((frequency, value_count))
+    return groups
+
+
+def _frequency_shape_expression(groups, distinct_count, row_count):
+    """Build a synthetic ordinal expression that preserves frequency shape."""
+    distinct_count = _positive_int(distinct_count)
+    row_count = _positive_int(row_count)
+    if not groups or not distinct_count or not row_count:
+        return None
+
+    total_distinct = sum(value_count for _frequency, value_count in groups)
+    total_rows = sum(frequency * value_count for frequency, value_count in groups)
+    if total_distinct != distinct_count or total_rows != row_count:
+        return None
+
+    case_lines = []
+    cumulative_rows = 0
+    ordinal_offset = 0
+    for frequency, value_count in groups:
+        band_start = cumulative_rows + 1
+        band_rows = frequency * value_count
+        cumulative_rows += band_rows
+        expression = f"{ordinal_offset + 1}+div(rownum-{band_start},{frequency})"
+        case_lines.append(f"when rownum <= {cumulative_rows} then {expression}")
+        ordinal_offset += value_count
+
+    return f"""case
+    {' '.join(case_lines)}
+    else {distinct_count}
+    end"""
+
+
+def _numeric_frequency_shape_expression(
+    extractor,
+    database,
+    table,
+    column,
+    column_type,
+    distinct_count,
+    row_count,
+):
+    """Preserve low/medium-NDV integer frequency shape without source values."""
+    if not _is_integer_column_type(column_type):
+        return None
+
+    distinct_count = _positive_int(distinct_count)
+    row_count = _positive_int(row_count)
+    if not distinct_count or not row_count or distinct_count >= row_count:
+        return None
+
+    max_distinct = int(os.environ.get(
+        "DATAGENX_NUMERIC_FREQUENCY_SHAPE_MAX_DISTINCT",
+        "10000",
+    ))
+    max_groups = int(os.environ.get(
+        "DATAGENX_NUMERIC_FREQUENCY_SHAPE_MAX_GROUPS",
+        "5000",
+    ))
+    if distinct_count > max_distinct:
+        return None
+
+    try:
+        groups = _get_frequency_shape_groups(
+            extractor.cursor,
+            database,
+            table,
+            column,
+        )
+    except Exception as e:
+        print(
+            f"    Note: frequency-shape lookup unavailable for "
+            f"{table}.{column} ({e})"
+        )
+        return None
+
+    if not groups or len(groups) > max_groups:
+        return None
+    return _frequency_shape_expression(groups, distinct_count, row_count)
+
+
+def _build_two_column_frequency_shape_pk_appendages(
+    extractor,
+    database,
+    table,
+    pk_info,
+    row_count,
+):
+    """Preserve one composite-PK column's frequency shape while staying unique.
+
+    For a two-column composite key, one column can be emitted in contiguous
+    synthetic frequency bands while the partner column cycles.  If no frequency
+    band is longer than the partner's NDV, each (banded, partner) pair remains
+    unique.  The source query reads only counts grouped by counts, never source
+    literal values.
+    """
+    row_count = _positive_int(row_count)
+    if len(pk_info) != 2 or not row_count:
+        return None
+
+    max_groups = int(os.environ.get(
+        "DATAGENX_COMPOSITE_PK_FREQUENCY_SHAPE_MAX_GROUPS",
+        "5000",
+    ))
+
+    for shaped_col, shaped_distinct in sorted(pk_info, key=lambda item: item[1]):
+        partner_col, partner_distinct = next(
+            (col, distinct)
+            for col, distinct in pk_info
+            if col != shaped_col
+        )
+        partner_distinct = _positive_int(partner_distinct)
+        if not partner_distinct:
+            continue
+
+        try:
+            groups = _get_frequency_shape_groups(
+                extractor.cursor,
+                database,
+                table,
+                shaped_col,
+            )
+        except Exception as e:
+            print(
+                f"    Note: frequency-shape lookup unavailable for "
+                f"{table}.{shaped_col} ({e})"
+            )
+            continue
+
+        if not groups or len(groups) > max_groups:
+            continue
+        if max(frequency for frequency, _value_count in groups) > partner_distinct:
+            continue
+
+        shaped_expr = _frequency_shape_expression(
+            groups,
+            shaped_distinct,
+            row_count,
+        )
+        if not shaped_expr:
+            continue
+
+        return {
+            shaped_col: shaped_expr,
+            partner_col: f"mod(rownum-1, {partner_distinct}) + 1",
+        }
+
+    return None
+
+
 def _lcm(values):
     result = 1
     for value in values:
@@ -164,6 +339,7 @@ def _product(values):
 
 def _build_composite_pk_appendages(
     extractor,
+    database,
     table,
     primary_key_columns,
     foreign_keys,
@@ -201,6 +377,16 @@ def _build_composite_pk_appendages(
         return {}
 
     row_count = _positive_int(table_row_count)
+    frequency_shape_appendages = _build_two_column_frequency_shape_pk_appendages(
+        extractor,
+        database,
+        table,
+        pk_info,
+        row_count,
+    )
+    if frequency_shape_appendages:
+        return frequency_shape_appendages
+
     if len(pk_info) >= 2 and row_count:
         distinct_counts = [distinct_count for _col, distinct_count in pk_info]
         cycle_length = _lcm(distinct_counts)
@@ -304,6 +490,7 @@ def annotate_table_with_statistics(extractor, database, table, generated_appenda
     exact_distinct_cache = {}
     composite_pk_appendages = _build_composite_pk_appendages(
         extractor,
+        database,
         table,
         primary_key_columns,
         foreign_keys,
@@ -433,7 +620,18 @@ def annotate_table_with_statistics(extractor, database, table, generated_appenda
                 exact_distinct_cache,
                 prefer_exact=True,
             )
-            if histogram:
+            frequency_shape = _numeric_frequency_shape_expression(
+                extractor,
+                database,
+                table,
+                col,
+                col_type,
+                actual_distinct,
+                table_row_count,
+            )
+            if frequency_shape:
+                synthetic = frequency_shape
+            elif histogram:
                 synthetic = histogram_to_case(
                     histogram,
                     line,

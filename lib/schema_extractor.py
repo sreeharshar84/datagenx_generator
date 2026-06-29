@@ -606,8 +606,18 @@ class TiDBExtractor(SchemaExtractor):
 
     def analyze_table(self, table):
         """Run TiDB ANALYZE TABLE to collect optimizer statistics."""
-        self.cursor.execute(f"ANALYZE TABLE `{self.database}`.`{table}` ALL COLUMNS")
-        self.cursor.fetchall()
+        try:
+            self.cursor.execute(f"ANALYZE TABLE `{self.database}`.`{table}` ALL COLUMNS")
+            self.cursor.fetchall()
+        except Error as exc:
+            if not _is_tidb_memory_limit_error(exc):
+                raise
+            print(
+                f"Warning: TiDB ANALYZE ALL COLUMNS exceeded memory for {table}; "
+                "falling back to ANALYZE TABLE."
+            )
+            self.cursor.execute(f"ANALYZE TABLE `{self.database}`.`{table}`")
+            self.cursor.fetchall()
 
     def get_column_histogram(self, table, column):
         """Return a TiDB column histogram in DataGenX internal format."""
@@ -650,9 +660,11 @@ class TiDBExtractor(SchemaExtractor):
             _safe_int(row.get("count"), default=0)
             for row in rows
         ]
-        total = sum(counts)
-        if total <= 0:
+        topn_total = sum(counts)
+        if topn_total <= 0:
             return []
+        row_count = self.get_table_row_count(table)
+        total = row_count if row_count and row_count > 0 else topn_total
 
         entries = []
         for ordinal, count in enumerate(counts, start=1):
@@ -937,6 +949,15 @@ def _safe_int(value, default=0):
             return int(float(value))
         except (TypeError, ValueError):
             return default
+
+
+def _is_tidb_memory_limit_error(exc):
+    message = str(exc).lower()
+    return (
+        getattr(exc, "errno", None) == 8176
+        or "tidb_server_memory_limit" in message
+        or "memory limit" in message
+    )
 
 
 def _parse_tidb_bound(value):

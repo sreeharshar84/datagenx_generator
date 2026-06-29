@@ -8,6 +8,8 @@
 #   bash tests/test_tidb_e2e.sh tpch-sf1 [rows|full]
 #   bash tests/test_tidb_e2e.sh tpch-sf5 [rows|full]
 #   bash tests/test_tidb_e2e.sh tpch-sf10 [rows|full]
+#   bash tests/test_tidb_e2e.sh tpcds-sf1 [rows|full]
+#   bash tests/test_tidb_e2e.sh tpcds-sf5 [rows|full]
 #   bash tests/test_tidb_e2e.sh tpcds-sf10 [rows|full]
 #   bash tests/test_tidb_e2e.sh all [rows|full]
 #
@@ -21,6 +23,8 @@
 #   TPCH_SF1_SOURCE_SCHEMA=tpch_sf1_tidb
 #   TPCH_SF5_SOURCE_SCHEMA=tpch_sf5_tidb
 #   TPCH_SF10_SOURCE_SCHEMA=tpch_10gb
+#   TPCDS_SF1_SOURCE_SCHEMA=tpcds_sf1_tidb
+#   TPCDS_SF5_SOURCE_SCHEMA=tpcds_sf5_tidb
 #   TPCDS_SF10_SOURCE_SCHEMA=tpcds
 #
 # Example with an already-running TiDB:
@@ -252,6 +256,20 @@ profile_config() {
             RESULT_FILE="${TPCH_SF10_RESULT_FILE:-$RESULTS_DIR/results_tpch_sf10_tidb.txt}"
             EXPECTED_TABLES=8
             ;;
+        tpcds-sf1|tpcds_sf1)
+            PROFILE_LABEL="TPC-DS SF=1"
+            SOURCE_SCHEMA="${TPCDS_SF1_SOURCE_SCHEMA:-tpcds_sf1_tidb}"
+            TARGET_SCHEMA="${TPCDS_SF1_TARGET_SCHEMA:-${SOURCE_SCHEMA}_test}"
+            RESULT_FILE="${TPCDS_SF1_RESULT_FILE:-$RESULTS_DIR/results_tpcds_sf1_tidb.txt}"
+            EXPECTED_TABLES=24
+            ;;
+        tpcds-sf5|tpcds_sf5)
+            PROFILE_LABEL="TPC-DS SF=5"
+            SOURCE_SCHEMA="${TPCDS_SF5_SOURCE_SCHEMA:-tpcds_sf5_tidb}"
+            TARGET_SCHEMA="${TPCDS_SF5_TARGET_SCHEMA:-${SOURCE_SCHEMA}_test}"
+            RESULT_FILE="${TPCDS_SF5_RESULT_FILE:-$RESULTS_DIR/results_tpcds_sf5_tidb.txt}"
+            EXPECTED_TABLES=24
+            ;;
         tpcds-sf10|tpcds_sf10)
             PROFILE_LABEL="TPC-DS SF=10"
             SOURCE_SCHEMA="${TPCDS_SF10_SOURCE_SCHEMA:-tpcds}"
@@ -354,6 +372,8 @@ case "$PROFILE" in
         run_profile tpch-sf1
         run_profile tpch-sf5
         run_profile tpch-sf10
+        run_profile tpcds-sf1
+        run_profile tpcds-sf5
         run_profile tpcds-sf10
         ;;
     *)

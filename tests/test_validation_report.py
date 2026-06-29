@@ -191,6 +191,207 @@ class ValidationReportTest(unittest.TestCase):
     def test_frequency_shape_diff_compares_distribution_without_values(self):
         self.assertEqual(validation_report.frequency_shape_diff([1, 1, 1], [1, 1, 1]), 0.0)
         self.assertGreater(validation_report.frequency_shape_diff([3, 1], [2, 2]), 0.0)
+        self.assertEqual(
+            validation_report.frequency_group_shape_diff([(1, 3)], [(1, 3)]),
+            0.0,
+        )
+        self.assertGreater(
+            validation_report.frequency_group_shape_diff([(3, 1), (1, 1)], [(2, 2)]),
+            0.0,
+        )
+
+    def test_histogram_summary_uses_frequency_fallback_for_diverged_low_ndv_histogram(self):
+        old_get_histograms = validation_report.get_histograms
+        old_get_indexed_columns = validation_report.get_indexed_columns
+        old_get_column_types = validation_report.get_column_types
+        old_get_frequency_count_groups = validation_report.get_frequency_count_groups
+
+        source_hist = {
+            "k": {
+                "histogram-type": "equi-height",
+                "buckets": [[1, 2, 0.5, 1], [3, 4, 1.0, 1]],
+            }
+        }
+        target_hist = {
+            "k": {
+                "histogram-type": "equi-height",
+                "buckets": [[1, 3, 0.75, 1], [4, 4, 1.0, 1]],
+            }
+        }
+
+        try:
+            validation_report.get_histograms = (
+                lambda cursor, args, schema, table: source_hist if schema == "src" else target_hist
+            )
+            validation_report.get_indexed_columns = lambda cursor, schema, table: {"k"}
+            validation_report.get_column_types = lambda cursor, schema, table: {"k": "int"}
+            validation_report.get_frequency_count_groups = (
+                lambda cursor, schema, table, column: [(10, 2)]
+            )
+
+            args = SimpleNamespace(
+                db_type="tidb",
+                histogram_fallback_max_rows=1000,
+                histogram_fallback_max_distinct=10,
+                tidb_histogram_fallback_max_distinct=10,
+                sampled_histogram_fallback_max_distinct=10,
+            )
+            row_df = validation_report.pd.DataFrame([
+                {"table": "inventory", "source_rows": 20, "target_rows": 20},
+            ])
+            distinct_df = validation_report.pd.DataFrame([
+                {
+                    "table": "inventory",
+                    "column": "k",
+                    "source_distinct": 2,
+                    "target_distinct": 2,
+                },
+            ])
+
+            rows = validation_report.get_histogram_summary(
+                None,
+                args,
+                "src",
+                "tgt",
+                ["inventory"],
+                row_df=row_df,
+                distinct_df=distinct_df,
+            )
+        finally:
+            validation_report.get_histograms = old_get_histograms
+            validation_report.get_indexed_columns = old_get_indexed_columns
+            validation_report.get_column_types = old_get_column_types
+            validation_report.get_frequency_count_groups = old_get_frequency_count_groups
+
+        row = rows.iloc[0]
+        self.assertEqual(row["status"], "PASS")
+        self.assertEqual(row["histogram_diff"], 0.0)
+        self.assertIn("exact frequency shape fallback", row["reason"])
+
+    def test_histogram_summary_uses_unique_cardinality_fallback_for_missing_histogram(self):
+        old_get_histograms = validation_report.get_histograms
+        old_get_indexed_columns = validation_report.get_indexed_columns
+        old_get_column_types = validation_report.get_column_types
+        old_get_frequency_count_groups = validation_report.get_frequency_count_groups
+
+        source_hist = {
+            "item_sk": {
+                "histogram-type": "equi-height",
+                "buckets": [[1, 100, 0.5, 100], [101, 200, 1.0, 100]],
+            }
+        }
+
+        try:
+            validation_report.get_histograms = (
+                lambda cursor, args, schema, table: source_hist if schema == "src" else {}
+            )
+            validation_report.get_indexed_columns = lambda cursor, schema, table: {"item_sk"}
+            validation_report.get_column_types = lambda cursor, schema, table: {"item_sk": "int"}
+            validation_report.get_frequency_count_groups = (
+                lambda cursor, schema, table, column: (_ for _ in ()).throw(AssertionError("not needed"))
+            )
+
+            args = SimpleNamespace(
+                db_type="tidb",
+                histogram_fallback_max_rows=1000,
+                histogram_fallback_max_distinct=10,
+                tidb_histogram_fallback_max_distinct=10,
+                sampled_histogram_fallback_max_distinct=10,
+            )
+            row_df = validation_report.pd.DataFrame([
+                {"table": "item", "source_rows": 200, "target_rows": 200},
+            ])
+            distinct_df = validation_report.pd.DataFrame([
+                {
+                    "table": "item",
+                    "column": "item_sk",
+                    "source_distinct": 200,
+                    "target_distinct": 200,
+                },
+            ])
+
+            rows = validation_report.get_histogram_summary(
+                None,
+                args,
+                "src",
+                "tgt",
+                ["item"],
+                row_df=row_df,
+                distinct_df=distinct_df,
+            )
+        finally:
+            validation_report.get_histograms = old_get_histograms
+            validation_report.get_indexed_columns = old_get_indexed_columns
+            validation_report.get_column_types = old_get_column_types
+            validation_report.get_frequency_count_groups = old_get_frequency_count_groups
+
+        row = rows.iloc[0]
+        self.assertEqual(row["status"], "PASS")
+        self.assertEqual(row["histogram_diff"], 0.0)
+        self.assertEqual(row["source_histogram_type"], "unique-cardinality")
+        self.assertIn("exact unique cardinality fallback", row["reason"])
+
+    def test_tidb_missing_histogram_uses_frequency_fallback_for_large_low_ndv_critical_column(self):
+        old_get_histograms = validation_report.get_histograms
+        old_get_indexed_columns = validation_report.get_indexed_columns
+        old_get_column_types = validation_report.get_column_types
+        old_get_frequency_count_groups = validation_report.get_frequency_count_groups
+
+        source_hist = {
+            "item_sk": {
+                "histogram-type": "equi-height",
+                "buckets": [[1, 100, 1.0, 100]],
+            }
+        }
+
+        try:
+            validation_report.get_histograms = (
+                lambda cursor, args, schema, table: source_hist if schema == "src" else {}
+            )
+            validation_report.get_indexed_columns = lambda cursor, schema, table: {"item_sk"}
+            validation_report.get_column_types = lambda cursor, schema, table: {"item_sk": "int"}
+            validation_report.get_frequency_count_groups = (
+                lambda cursor, schema, table, column: [(3, 1), (2, 1), (1, 1)]
+            )
+
+            args = SimpleNamespace(
+                db_type="tidb",
+                histogram_fallback_max_rows=10000,
+                histogram_fallback_max_distinct=100000,
+                tidb_histogram_fallback_max_distinct=100000,
+                sampled_histogram_fallback_max_distinct=1000,
+            )
+            row_df = validation_report.pd.DataFrame([
+                {"table": "store_sales", "source_rows": 14_000_000, "target_rows": 14_000_000},
+            ])
+            distinct_df = validation_report.pd.DataFrame([
+                {
+                    "table": "store_sales",
+                    "column": "item_sk",
+                    "source_distinct": 54_000,
+                    "target_distinct": 54_000,
+                },
+            ])
+
+            rows = validation_report.get_histogram_summary(
+                None,
+                args,
+                "src",
+                "tgt",
+                ["store_sales"],
+                row_df=row_df,
+                distinct_df=distinct_df,
+            )
+        finally:
+            validation_report.get_histograms = old_get_histograms
+            validation_report.get_indexed_columns = old_get_indexed_columns
+            validation_report.get_column_types = old_get_column_types
+            validation_report.get_frequency_count_groups = old_get_frequency_count_groups
+
+        row = rows.iloc[0]
+        self.assertEqual(row["status"], "PASS")
+        self.assertEqual(row["histogram_diff"], 0.0)
+        self.assertIn("exact frequency shape fallback", row["reason"])
 
     def test_tidb_overlap_uses_primary_key_index_nested_loop(self):
         cursor = FakeOverlapCursor()
