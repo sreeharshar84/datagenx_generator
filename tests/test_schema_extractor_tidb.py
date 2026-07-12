@@ -18,7 +18,12 @@ mysql_pkg.connector = connector_mod
 sys.modules.setdefault("mysql", mysql_pkg)
 sys.modules.setdefault("mysql.connector", connector_mod)
 
-from lib.schema_extractor import TiDBExtractor, available_extractor_types, connection_kwargs_for
+from lib.schema_extractor import (
+    Error as SchemaExtractorError,
+    TiDBExtractor,
+    available_extractor_types,
+    connection_kwargs_for,
+)
 
 
 class FakeCursor:
@@ -101,6 +106,21 @@ class FakeTopNCursor(FakeCursor):
             super().execute(sql, params)
 
 
+class FakeNativeTopNCursor(FakeTopNCursor):
+    def execute(self, sql, params=None):
+        if sql.startswith("SHOW STATS_META"):
+            self.executed.append((sql, params))
+            self.column_names = [
+                "Db_name", "Table_name", "Partition_name", "Update_time",
+                "Modify_count", "Row_count", "Last_analyze_time",
+            ]
+            self._rows = [
+                ("test", "orders", "", None, 0, 10, None),
+            ]
+            return
+        super().execute(sql, params)
+
+
 class FakePartialStatsCursor(FakeCursor):
     def execute(self, sql, params=None):
         self.executed.append((sql, params))
@@ -117,6 +137,24 @@ class FakePartialStatsCursor(FakeCursor):
             raise AssertionError("TiDB cardinality should not exact-scan missing stats")
         else:
             super().execute(sql, params)
+
+
+class FakeAnalyzeCursor:
+    def __init__(self):
+        self.executed = []
+        self.column_names = []
+        self._rows = []
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+        if sql.endswith("ALL COLUMNS"):
+            error = SchemaExtractorError("exceeded tidb_server_memory_limit")
+            error.errno = 8176
+            raise error
+        self._rows = []
+
+    def fetchall(self):
+        return self._rows
 
 
 class TiDBExtractorTest(unittest.TestCase):
@@ -183,6 +221,21 @@ class TiDBExtractorTest(unittest.TestCase):
         self.assertEqual(histogram["histogram-type"], "singleton")
         self.assertEqual(histogram["buckets"], [[1, 0.75], [2, 1.0]])
 
+    def test_native_topn_uses_table_row_probability_mass_without_values(self):
+        extractor = TiDBExtractor("127.0.0.1", "root", "", "test")
+        extractor.cursor = FakeNativeTopNCursor()
+
+        entries = extractor.get_column_topn("orders", "o_status")
+
+        self.assertEqual([entry.ordinal for entry in entries], [1, 2])
+        self.assertEqual([entry.count for entry in entries], [3, 1])
+        self.assertEqual([entry.frequency for entry in entries], [0.3, 0.1])
+        self.assertFalse(any(
+            "SECRET" in str(value)
+            for entry in entries
+            for value in entry.__dict__.values()
+        ))
+
     def test_column_cardinalities_do_not_exact_scan_missing_tidb_stats(self):
         extractor = TiDBExtractor("127.0.0.1", "root", "", "test")
         extractor.cursor = FakePartialStatsCursor()
@@ -190,6 +243,18 @@ class TiDBExtractorTest(unittest.TestCase):
         self.assertEqual(extractor.get_column_cardinalities("orders"), {"o_orderkey": 4})
         executed_sql = [sql for sql, _params in extractor.cursor.executed]
         self.assertFalse(any("COUNT(DISTINCT" in sql for sql in executed_sql))
+
+    def test_analyze_table_falls_back_when_all_columns_hits_memory_limit(self):
+        extractor = TiDBExtractor("127.0.0.1", "root", "", "test")
+        extractor.cursor = FakeAnalyzeCursor()
+
+        extractor.analyze_table("web_sales")
+
+        executed_sql = [sql for sql, _params in extractor.cursor.executed]
+        self.assertEqual(executed_sql, [
+            "ANALYZE TABLE `test`.`web_sales` ALL COLUMNS",
+            "ANALYZE TABLE `test`.`web_sales`",
+        ])
 
 
 if __name__ == "__main__":

@@ -25,6 +25,14 @@ ENUM_TYPES = {"enum", "set"}
 # Above this threshold, fall back to random string generation.
 STRING_CARDINALITY_THRESHOLD = 1000
 EXACT_LOW_CARDINALITY_THRESHOLD = 1000
+# Frequency-shape FK generation fetches grouped counts, not source values.
+# The expression size is capped separately by FK_FREQUENCY_SHAPE_MAX_GROUPS.
+FK_FREQUENCY_SHAPE_MAX_DISTINCT = int(
+    os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_DISTINCT", "2000000")
+)
+FK_FREQUENCY_SHAPE_MAX_GROUPS = int(
+    os.environ.get("DATAGENX_FK_FREQUENCY_SHAPE_MAX_GROUPS", "10000")
+)
 
 # Synthetic base date for generating date values.
 # We use a synthetic date range to avoid exposing actual source data dates.
@@ -224,13 +232,37 @@ def build_single_fk_expression(
     actual_distinct = actual_distinct or 0
     source_row_count = source_row_count or 1
 
-    # Calculate NULL rate: parts per 10000 (0.01% precision) for rows with NULL/0 FK values
+    # Preserve NULL and zero/unknown FK rows separately. TPC-style schemas often
+    # use 0 as an unknown surrogate key while parent domains start at 1; report
+    # FK orphan checks intentionally ignore those 0 values.
     cursor.execute(f"""
-        SELECT COUNT(*) FROM `{source_db}`.`{table}`
+        SELECT COUNT(*),
+               SUM(`{col}` IS NULL),
+               SUM(`{col}` = 0)
+        FROM `{source_db}`.`{table}`
     """)
-    total_row_count = cursor.fetchone()[0] or 1
-    null_row_count = total_row_count - source_row_count
-    null_rate_per_10000 = (null_row_count * 10000) // total_row_count if total_row_count > 0 else 0
+    total_row_count, null_row_count, zero_row_count = cursor.fetchone()
+    total_row_count = total_row_count or 1
+    null_row_count = int(null_row_count or 0)
+    zero_row_count = int(zero_row_count or 0) if ref_min > 0 else 0
+    unknown_row_count = null_row_count + zero_row_count
+    unknown_rate_per_10000 = (unknown_row_count * 10000) // total_row_count if total_row_count > 0 else 0
+
+    def wrap_unknown_rows(expression):
+        case_lines = []
+        cumulative = 0
+        if zero_row_count > 0:
+            cumulative += zero_row_count
+            case_lines.append(f"when rownum <= {cumulative} then 0")
+        if null_row_count > 0:
+            cumulative += null_row_count
+            case_lines.append(f"when rownum <= {cumulative} then NULL")
+        if not case_lines:
+            return expression
+        return f"""case
+    {' '.join(case_lines)}
+    else {expression}
+    end"""
 
     # Calculate coverage ratio (how much of referenced table is used)
     coverage_ratio = actual_distinct / ref_table_size if ref_table_size > 0 else 1.0
@@ -257,9 +289,27 @@ def build_single_fk_expression(
         source_row_count,
         valid_fk_predicate,
         null_row_count,
+        zero_row_count,
     )
     if exact_low_cardinality:
         return exact_low_cardinality
+
+    frequency_shape = _build_frequency_shape_fk_expression(
+        cursor,
+        source_db,
+        target_db,
+        table,
+        col,
+        ref_table,
+        ref_col,
+        actual_distinct,
+        source_row_count,
+        valid_fk_predicate,
+        null_row_count,
+        zero_row_count,
+    )
+    if frequency_shape:
+        return frequency_shape
 
     # Decision based on coverage AND distinct_ratio:
     # - If distinct_ratio > 0.5: use mod() cycling (random would cause collisions)
@@ -297,10 +347,10 @@ def build_single_fk_expression(
         # Moderate coverage: use mod() cycling to match exact distinct count
         # This generates values 1 to actual_distinct (assuming ref_min=1)
         expression = f"mod(rownum-1, {actual_distinct}) + {ref_min}"
-        # Wrap with NULL handling if source has NULL/0 values
-        if null_rate_per_10000 > 0:
-            expression = f"case when rand.range(0, 10000) < {null_rate_per_10000} then NULL else {expression} end"
-            description = f"cycling mod({actual_distinct})+{ref_min} with {null_rate_per_10000/100:.1f}% NULL ({coverage_ratio*100:.1f}% coverage)"
+        # Wrap with NULL/unknown handling if source has NULL/0 values.
+        if unknown_rate_per_10000 > 0:
+            expression = wrap_unknown_rows(expression)
+            description = f"cycling mod({actual_distinct})+{ref_min} with {unknown_rate_per_10000/100:.1f}% unknown ({coverage_ratio*100:.1f}% coverage)"
         else:
             description = f"cycling mod({actual_distinct})+{ref_min} ({coverage_ratio*100:.1f}% coverage)"
         return (expression, description)
@@ -315,10 +365,10 @@ def build_single_fk_expression(
     # Use mod() cycling to match exact source cardinality, avoiding birthday paradox
     expression = f"mod(rownum-1, {actual_distinct}) + {ref_min}"
 
-    # Wrap with NULL handling if source has NULL/0 values
-    if null_rate_per_10000 > 0:
-        expression = f"case when rand.range(0, 10000) < {null_rate_per_10000} then NULL else {expression} end"
-        description = f"cycling mod({actual_distinct})+{ref_min} with {null_rate_per_10000/100:.1f}% NULL (dense {coverage_ratio*100:.0f}% coverage)"
+    # Wrap with NULL/unknown handling if source has NULL/0 values.
+    if unknown_rate_per_10000 > 0:
+        expression = wrap_unknown_rows(expression)
+        description = f"cycling mod({actual_distinct})+{ref_min} with {unknown_rate_per_10000/100:.1f}% unknown (dense {coverage_ratio*100:.0f}% coverage)"
     else:
         description = f"cycling mod({actual_distinct})+{ref_min} (dense {coverage_ratio*100:.0f}% coverage)"
     return (expression, description)
@@ -344,6 +394,7 @@ def _build_exact_low_cardinality_fk_expression(
     source_row_count,
     valid_fk_predicate,
     null_row_count=0,
+    zero_row_count=0,
 ):
     """Build a deterministic FK expression from exact source frequencies.
 
@@ -359,14 +410,14 @@ def _build_exact_low_cardinality_fk_expression(
         return None
 
     cursor.execute(f"""
-        SELECT `{col}`, COUNT(*) AS cnt
+        SELECT COUNT(*) AS cnt
         FROM `{source_db}`.`{table}`
         WHERE {valid_fk_predicate}
         GROUP BY `{col}`
-        ORDER BY `{col}`
+        ORDER BY cnt DESC
     """)
-    source_frequencies = cursor.fetchall()
-    if not source_frequencies or len(source_frequencies) != actual_distinct:
+    source_counts = [int(row[0]) for row in cursor.fetchall()]
+    if not source_counts or len(source_counts) != actual_distinct:
         return None
 
     cursor.execute(f"""
@@ -380,10 +431,14 @@ def _build_exact_low_cardinality_fk_expression(
 
     sampled_values = target_values[:actual_distinct]
     case_lines = []
-    cumulative = int(null_row_count or 0)
-    if cumulative > 0:
+    cumulative = 0
+    if zero_row_count:
+        cumulative += int(zero_row_count)
+        case_lines.append(f"when rownum <= {cumulative} then 0")
+    if null_row_count:
+        cumulative += int(null_row_count)
         case_lines.append(f"when rownum <= {cumulative} then NULL")
-    for target_value, (_source_value, count) in zip(sampled_values, source_frequencies):
+    for target_value, count in zip(sampled_values, source_counts):
         if count <= 0:
             continue
         cumulative += int(count)
@@ -397,6 +452,105 @@ def _build_exact_low_cardinality_fk_expression(
     else {_dbgen_literal(sampled_values[-1])}
     end"""
     description = f"exact low-cardinality FK frequencies ({actual_distinct} distinct)"
+    return (expression, description)
+
+
+def _build_frequency_shape_fk_expression(
+    cursor,
+    source_db,
+    target_db,
+    table,
+    col,
+    ref_table,
+    ref_col,
+    actual_distinct,
+    source_row_count,
+    valid_fk_predicate,
+    null_row_count=0,
+    zero_row_count=0,
+):
+    """Build a compressed FK expression that preserves frequency shape.
+
+    Source input is only grouped cardinality information: how many distinct FK
+    values share the same row frequency. Source FK literals are never fetched.
+    Generated values are contiguous synthetic keys from the target parent table.
+    """
+    if not actual_distinct or actual_distinct > FK_FREQUENCY_SHAPE_MAX_DISTINCT:
+        return None
+    if not source_row_count or source_row_count <= 0:
+        return None
+
+    cursor.execute(f"""
+        SELECT COUNT(DISTINCT `{ref_col}`), MIN(`{ref_col}`), MAX(`{ref_col}`)
+        FROM `{target_db}`.`{ref_table}`
+    """)
+    target_distinct, target_min, target_max = cursor.fetchone()
+    target_distinct = int(target_distinct or 0)
+    if target_distinct < actual_distinct or target_min is None or target_max is None:
+        return None
+
+    if not all(isinstance(value, int) and not isinstance(value, bool) for value in (target_min, target_max)):
+        return None
+    if target_max - target_min + 1 != target_distinct:
+        return None
+
+    cursor.execute(f"""
+        SELECT frequency, COUNT(*) AS value_count
+        FROM (
+            SELECT COUNT(*) AS frequency
+            FROM `{source_db}`.`{table}`
+            WHERE {valid_fk_predicate}
+            GROUP BY `{col}`
+        ) grouped
+        GROUP BY frequency
+        ORDER BY frequency DESC
+    """)
+    frequency_groups = [(int(frequency), int(value_count)) for frequency, value_count in cursor.fetchall()]
+    if not frequency_groups or len(frequency_groups) > FK_FREQUENCY_SHAPE_MAX_GROUPS:
+        return None
+
+    grouped_distinct = sum(value_count for _frequency, value_count in frequency_groups)
+    grouped_rows = sum(frequency * value_count for frequency, value_count in frequency_groups)
+    if grouped_distinct != actual_distinct or grouped_rows != source_row_count:
+        return None
+
+    case_lines = []
+    unknown_rows = int(zero_row_count or 0) + int(null_row_count or 0)
+    cumulative = 0
+    if zero_row_count:
+        cumulative += int(zero_row_count)
+        case_lines.append(f"when rownum <= {cumulative} then 0")
+    if null_row_count:
+        cumulative += int(null_row_count)
+        case_lines.append(f"when rownum <= {cumulative} then NULL")
+
+    valid_rows_before = 0
+    distinct_before = 0
+    for frequency, value_count in frequency_groups:
+        if frequency <= 0 or value_count <= 0:
+            continue
+        group_rows = frequency * value_count
+        cumulative = unknown_rows + valid_rows_before + group_rows
+        group_start = target_min + distinct_before
+        valid_row_start = unknown_rows + valid_rows_before + 1
+        case_lines.append(
+            f"when rownum <= {cumulative} then "
+            f"{group_start}+div(rownum-{valid_row_start},{frequency})"
+        )
+        valid_rows_before += group_rows
+        distinct_before += value_count
+
+    if not case_lines or distinct_before != actual_distinct:
+        return None
+
+    expression = f"""case
+    {' '.join(case_lines)}
+    else {target_min + actual_distinct - 1}
+    end"""
+    description = (
+        f"frequency-shape FK ({actual_distinct} distinct, "
+        f"{len(frequency_groups)} frequency groups)"
+    )
     return (expression, description)
 
 
