@@ -290,6 +290,58 @@ Tests use connection settings from `config.py`. Override via CLI:
 python3 tests/test_agent.py --host localhost --user root --password mypass
 ```
 
+### Unit Tests (No Database Required)
+
+Unit tests run against mock JSON fixtures instead of a live MySQL database.
+This allows fast, offline testing of generation logic.
+
+**Run unit tests:**
+
+```bash
+pytest tests/test_mock_db.py -v
+```
+
+**Available pytest fixtures:**
+
+| Fixture | Description |
+|---------|-------------|
+| `mock_mysql` | Patches `mysql.connector.connect()` to return mock connection |
+| `mock_cursor` | Provides a ready-to-use mock cursor |
+
+**Example unit test:**
+
+```python
+# tests/test_example.py
+def test_film_count(mock_cursor):
+    mock_cursor.execute("SELECT COUNT(*) FROM `datagenx_test_src`.`film`")
+    assert mock_cursor.fetchone()[0] == 20
+
+def test_with_patched_connector(mock_mysql):
+    import mysql.connector
+    conn = mysql.connector.connect()  # Returns mock
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(DISTINCT `language_id`) FROM `datagenx_test_src`.`film`")
+    assert cursor.fetchone()[0] == 1
+```
+
+**Mock data files** (in `tests/sakila/`):
+
+| File | Contains |
+|------|----------|
+| `schema.json` | DDL, columns, primary keys, foreign keys |
+| `histograms.json` | MySQL histogram buckets per column |
+| `indexes.json` | Index names, columns, cardinality |
+| `stats.json` | Row counts, distinct counts, min/max values |
+
+**Re-exporting fixtures** (requires live database):
+
+If the test schema changes, re-export the JSON fixtures:
+
+```bash
+python3 tests/test_agent.py --setup-only   # Create test DB
+python3 tests/sakila/export_metadata.py     # Export to JSON
+```
+
 ## Validate Separately
 
 Use the unified validation entry point:

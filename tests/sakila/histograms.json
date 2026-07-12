@@ -1,0 +1,2382 @@
+{
+  "schema_name": "datagenx_test_src",
+  "tables": {
+    "actor": {
+      "first_name": {
+        "buckets": [
+          [
+            "base64:type254:QkVUVEU=",
+            0.05
+          ],
+          [
+            "base64:type254:Qk9C",
+            0.1
+          ],
+          [
+            "base64:type254:Q0hSSVNUSUFO",
+            0.15
+          ],
+          [
+            "base64:type254:Q1VCQQ==",
+            0.2
+          ],
+          [
+            "base64:type254:REFO",
+            0.25
+          ],
+          [
+            "base64:type254:RUQ=",
+            0.3
+          ],
+          [
+            "base64:type254:RlJFRA==",
+            0.35
+          ],
+          [
+            "base64:type254:R1JBQ0U=",
+            0.4
+          ],
+          [
+            "base64:type254:SEVMRU4=",
+            0.45
+          ],
+          [
+            "base64:type254:SkVOTklGRVI=",
+            0.5
+          ],
+          [
+            "base64:type254:Sk9F",
+            0.55
+          ],
+          [
+            "base64:type254:Sk9ITk5Z",
+            0.6
+          ],
+          [
+            "base64:type254:S0FSTA==",
+            0.65
+          ],
+          [
+            "base64:type254:TFVDSUxMRQ==",
+            0.7
+          ],
+          [
+            "base64:type254:TUFUVEhFVw==",
+            0.75
+          ],
+          [
+            "base64:type254:TklDSw==",
+            0.8
+          ],
+          [
+            "base64:type254:UEVORUxPUEU=",
+            0.85
+          ],
+          [
+            "base64:type254:VU1B",
+            0.9
+          ],
+          [
+            "base64:type254:VklWSUVO",
+            0.95
+          ],
+          [
+            "base64:type254:WkVSTw==",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.843312",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "last_name": {
+        "buckets": [
+          [
+            "base64:type254:QkVSR0VO",
+            0.05
+          ],
+          [
+            "base64:type254:QkVSUlk=",
+            0.1
+          ],
+          [
+            "base64:type254:Q0FHRQ==",
+            0.15
+          ],
+          [
+            "base64:type254:Q0hBU0U=",
+            0.2
+          ],
+          [
+            "base64:type254:Q09TVE5FUg==",
+            0.25
+          ],
+          [
+            "base64:type254:REFWSVM=",
+            0.3
+          ],
+          [
+            "base64:type254:RkFXQ0VUVA==",
+            0.35
+          ],
+          [
+            "base64:type254:R0FCTEU=",
+            0.4
+          ],
+          [
+            "base64:type254:R1VJTkVTUw==",
+            0.45
+          ],
+          [
+            "base64:type254:Sk9IQU5TU09O",
+            0.5
+          ],
+          [
+            "base64:type254:TE9MTE9CUklHSURB",
+            0.55
+          ],
+          [
+            "base64:type254:TU9TVEVM",
+            0.6
+          ],
+          [
+            "base64:type254:TklDSE9MU09O",
+            0.65
+          ],
+          [
+            "base64:type254:T0xJVklFUg==",
+            0.7
+          ],
+          [
+            "base64:type254:U1dBTks=",
+            0.75
+          ],
+          [
+            "base64:type254:VE9STg==",
+            0.8
+          ],
+          [
+            "base64:type254:VFJBQ1k=",
+            0.85
+          ],
+          [
+            "base64:type254:Vk9JR0hU",
+            0.9
+          ],
+          [
+            "base64:type254:V0FITEJFUkc=",
+            0.95
+          ],
+          [
+            "base64:type254:V09PRA==",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.846270",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "category": {
+      "name": {
+        "buckets": [
+          [
+            "base64:type254:QWN0aW9u",
+            0.0625
+          ],
+          [
+            "base64:type254:QW5pbWF0aW9u",
+            0.125
+          ],
+          [
+            "base64:type254:Q2hpbGRyZW4=",
+            0.1875
+          ],
+          [
+            "base64:type254:Q2xhc3NpY3M=",
+            0.25
+          ],
+          [
+            "base64:type254:Q29tZWR5",
+            0.3125
+          ],
+          [
+            "base64:type254:RG9jdW1lbnRhcnk=",
+            0.375
+          ],
+          [
+            "base64:type254:RHJhbWE=",
+            0.4375
+          ],
+          [
+            "base64:type254:RmFtaWx5",
+            0.5
+          ],
+          [
+            "base64:type254:Rm9yZWlnbg==",
+            0.5625
+          ],
+          [
+            "base64:type254:R2FtZXM=",
+            0.625
+          ],
+          [
+            "base64:type254:SG9ycm9y",
+            0.6875
+          ],
+          [
+            "base64:type254:TXVzaWM=",
+            0.75
+          ],
+          [
+            "base64:type254:TmV3",
+            0.8125
+          ],
+          [
+            "base64:type254:U2NpLUZp",
+            0.875
+          ],
+          [
+            "base64:type254:U3BvcnRz",
+            0.9375
+          ],
+          [
+            "base64:type254:VHJhdmVs",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.857324",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "customer": {
+      "active": {
+        "buckets": [
+          [
+            0,
+            0.1
+          ],
+          [
+            1,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.859602",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "email": {
+        "buckets": [
+          [
+            "base64:type254:YmFyYmFyYUB0ZXN0LmNvbQ==",
+            0.05
+          ],
+          [
+            "base64:type254:YmV0dHlAdGVzdC5jb20=",
+            0.1
+          ],
+          [
+            "base64:type254:Y2Fyb2xAdGVzdC5jb20=",
+            0.15
+          ],
+          [
+            "base64:type254:ZG9ubmFAdGVzdC5jb20=",
+            0.2
+          ],
+          [
+            "base64:type254:ZG9yb3RoeUB0ZXN0LmNvbQ==",
+            0.25
+          ],
+          [
+            "base64:type254:ZWxpemFiZXRoQHRlc3QuY29t",
+            0.3
+          ],
+          [
+            "base64:type254:aGVsZW5AdGVzdC5jb20=",
+            0.35
+          ],
+          [
+            "base64:type254:amVubmlmZXJAdGVzdC5jb20=",
+            0.4
+          ],
+          [
+            "base64:type254:a2FyZW5AdGVzdC5jb20=",
+            0.45
+          ],
+          [
+            "base64:type254:bGluZGFAdGVzdC5jb20=",
+            0.5
+          ],
+          [
+            "base64:type254:bGlzYUB0ZXN0LmNvbQ==",
+            0.55
+          ],
+          [
+            "base64:type254:bWFyZ2FyZXRAdGVzdC5jb20=",
+            0.6
+          ],
+          [
+            "base64:type254:bWFyaWFAdGVzdC5jb20=",
+            0.65
+          ],
+          [
+            "base64:type254:bWFyeUB0ZXN0LmNvbQ==",
+            0.7
+          ],
+          [
+            "base64:type254:bmFuY3lAdGVzdC5jb20=",
+            0.75
+          ],
+          [
+            "base64:type254:cGF0cmljaWFAdGVzdC5jb20=",
+            0.8
+          ],
+          [
+            "base64:type254:cnV0aEB0ZXN0LmNvbQ==",
+            0.85
+          ],
+          [
+            "base64:type254:c2FuZHJhQHRlc3QuY29t",
+            0.9
+          ],
+          [
+            "base64:type254:c2hhcm9uQHRlc3QuY29t",
+            0.95
+          ],
+          [
+            "base64:type254:c3VzYW5AdGVzdC5jb20=",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.859711",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "first_name": {
+        "buckets": [
+          [
+            "base64:type254:QkFSQkFSQQ==",
+            0.05
+          ],
+          [
+            "base64:type254:QkVUVFk=",
+            0.1
+          ],
+          [
+            "base64:type254:Q0FST0w=",
+            0.15
+          ],
+          [
+            "base64:type254:RE9OTkE=",
+            0.2
+          ],
+          [
+            "base64:type254:RE9ST1RIWQ==",
+            0.25
+          ],
+          [
+            "base64:type254:RUxJWkFCRVRI",
+            0.3
+          ],
+          [
+            "base64:type254:SEVMRU4=",
+            0.35
+          ],
+          [
+            "base64:type254:SkVOTklGRVI=",
+            0.4
+          ],
+          [
+            "base64:type254:S0FSRU4=",
+            0.45
+          ],
+          [
+            "base64:type254:TElOREE=",
+            0.5
+          ],
+          [
+            "base64:type254:TElTQQ==",
+            0.55
+          ],
+          [
+            "base64:type254:TUFSR0FSRVQ=",
+            0.6
+          ],
+          [
+            "base64:type254:TUFSSUE=",
+            0.65
+          ],
+          [
+            "base64:type254:TUFSWQ==",
+            0.7
+          ],
+          [
+            "base64:type254:TkFOQ1k=",
+            0.75
+          ],
+          [
+            "base64:type254:UEFUUklDSUE=",
+            0.8
+          ],
+          [
+            "base64:type254:UlVUSA==",
+            0.85
+          ],
+          [
+            "base64:type254:U0FORFJB",
+            0.9
+          ],
+          [
+            "base64:type254:U0hBUk9O",
+            0.95
+          ],
+          [
+            "base64:type254:U1VTQU4=",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.859818",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "last_name": {
+        "buckets": [
+          [
+            "base64:type254:QU5ERVJTT04=",
+            0.05
+          ],
+          [
+            "base64:type254:QlJPV04=",
+            0.1
+          ],
+          [
+            "base64:type254:REFWSVM=",
+            0.15
+          ],
+          [
+            "base64:type254:R0FSQ0lB",
+            0.2
+          ],
+          [
+            "base64:type254:SEFSUklT",
+            0.25
+          ],
+          [
+            "base64:type254:SkFDS1NPTg==",
+            0.3
+          ],
+          [
+            "base64:type254:Sk9ITlNPTg==",
+            0.35
+          ],
+          [
+            "base64:type254:Sk9ORVM=",
+            0.4
+          ],
+          [
+            "base64:type254:TUFSVElO",
+            0.45
+          ],
+          [
+            "base64:type254:TUFSVElORVo=",
+            0.5
+          ],
+          [
+            "base64:type254:TUlMTEVS",
+            0.55
+          ],
+          [
+            "base64:type254:TU9PUkU=",
+            0.6
+          ],
+          [
+            "base64:type254:Uk9CSU5TT04=",
+            0.65
+          ],
+          [
+            "base64:type254:U01JVEg=",
+            0.7
+          ],
+          [
+            "base64:type254:VEFZTE9S",
+            0.75
+          ],
+          [
+            "base64:type254:VEhPTUFT",
+            0.8
+          ],
+          [
+            "base64:type254:VEhPTVBTT04=",
+            0.85
+          ],
+          [
+            "base64:type254:V0hJVEU=",
+            0.9
+          ],
+          [
+            "base64:type254:V0lMTElBTVM=",
+            0.95
+          ],
+          [
+            "base64:type254:V0lMU09O",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.859917",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "store_id": {
+        "buckets": [
+          [
+            1,
+            0.55
+          ],
+          [
+            2,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.860019",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "film": {
+      "description": {
+        "buckets": [
+          [
+            "base64:type254:QWN0aW9uLXBhY2tlZCBkcmFtYQ==",
+            0.05
+          ],
+          [
+            "base64:type254:QWN0aW9uLXBhY2tlZCB0YWxl",
+            0.1
+          ],
+          [
+            "base64:type254:QXN0b3VuZGluZyBkcmFtYQ==",
+            0.15
+          ],
+          [
+            "base64:type254:QXN0b3VuZGluZyByZWZsZWN0aW9u",
+            0.2
+          ],
+          [
+            "base64:type254:Qm9yaW5nIGVwaXN0bGU=",
+            0.25
+          ],
+          [
+            "base64:type254:QnJpbGxpYW50IGRyYW1h",
+            0.35
+          ],
+          [
+            "base64:type254:RW1vdGlvbmFsIGRyYW1h",
+            0.4
+          ],
+          [
+            "base64:type254:RXBpYyB0YWxl",
+            0.5
+          ],
+          [
+            "base64:type254:RmFuY2lmdWwgZG9jdW1lbnRhcnk=",
+            0.55
+          ],
+          [
+            "base64:type254:RmFuY2lmdWwgc2FnYQ==",
+            0.6
+          ],
+          [
+            "base64:type254:RmFzdC1wYWNlZCBjaGFyYWN0ZXI=",
+            0.65
+          ],
+          [
+            "base64:type254:RmFzdC1wYWNlZCBkb2N1bWVudGFyeQ==",
+            0.7
+          ],
+          [
+            "base64:type254:RmFzdC1wYWNlZCBkcmFtYQ==",
+            0.75
+          ],
+          [
+            "base64:type254:SW50cmVwaWQgcGFub3JhbWE=",
+            0.8
+          ],
+          [
+            "base64:type254:TGFja2x1c3RlciBkcmFtYQ==",
+            0.85
+          ],
+          [
+            "base64:type254:VGhvdWdodGZ1bCBkcmFtYQ==",
+            0.9
+          ],
+          [
+            "base64:type254:VGhvdWdodGZ1bCBwYW5vcmFtYQ==",
+            0.95
+          ],
+          [
+            "base64:type254:VG91Y2hpbmcgc2FnYQ==",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.863428",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "language_id": {
+        "buckets": [
+          [
+            1,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.863634",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "length": {
+        "buckets": [
+          [
+            46,
+            0.05
+          ],
+          [
+            48,
+            0.1
+          ],
+          [
+            50,
+            0.15
+          ],
+          [
+            54,
+            0.2
+          ],
+          [
+            57,
+            0.25
+          ],
+          [
+            62,
+            0.3
+          ],
+          [
+            63,
+            0.35
+          ],
+          [
+            79,
+            0.4
+          ],
+          [
+            82,
+            0.45
+          ],
+          [
+            86,
+            0.5
+          ],
+          [
+            94,
+            0.55
+          ],
+          [
+            113,
+            0.6
+          ],
+          [
+            114,
+            0.65
+          ],
+          [
+            117,
+            0.7
+          ],
+          [
+            126,
+            0.75
+          ],
+          [
+            130,
+            0.8
+          ],
+          [
+            136,
+            0.85
+          ],
+          [
+            150,
+            0.9
+          ],
+          [
+            169,
+            0.95
+          ],
+          [
+            180,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.863778",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "rating": {
+        "buckets": [
+          [
+            1,
+            0.2
+          ],
+          [
+            2,
+            0.45
+          ],
+          [
+            3,
+            0.6
+          ],
+          [
+            4,
+            0.75
+          ],
+          [
+            5,
+            1.0
+          ]
+        ],
+        "data-type": "enum",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.864397",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "release_year": {
+        "buckets": [
+          [
+            2006,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.864555",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "rental_duration": {
+        "buckets": [
+          [
+            3,
+            0.2
+          ],
+          [
+            4,
+            0.3
+          ],
+          [
+            5,
+            0.4
+          ],
+          [
+            6,
+            0.95
+          ],
+          [
+            7,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.864624",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "rental_rate": {
+        "buckets": [
+          [
+            0.99,
+            0.35
+          ],
+          [
+            2.99,
+            0.7
+          ],
+          [
+            4.99,
+            1.0
+          ]
+        ],
+        "data-type": "decimal",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.864700",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "replacement_cost": {
+        "buckets": [
+          [
+            12.99,
+            0.05
+          ],
+          [
+            14.99,
+            0.1
+          ],
+          [
+            15.99,
+            0.15
+          ],
+          [
+            16.99,
+            0.2
+          ],
+          [
+            17.99,
+            0.25
+          ],
+          [
+            18.99,
+            0.3
+          ],
+          [
+            20.99,
+            0.4
+          ],
+          [
+            21.99,
+            0.55
+          ],
+          [
+            22.99,
+            0.65
+          ],
+          [
+            23.99,
+            0.8
+          ],
+          [
+            24.99,
+            0.85
+          ],
+          [
+            26.99,
+            0.9
+          ],
+          [
+            27.99,
+            0.95
+          ],
+          [
+            28.99,
+            1.0
+          ]
+        ],
+        "data-type": "decimal",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.864778",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "title": {
+        "buckets": [
+          [
+            "base64:type254:QUNBREVNWSBESU5PU0FVUg==",
+            0.05
+          ],
+          [
+            "base64:type254:QUNFIEdPTERGSU5HRVI=",
+            0.1
+          ],
+          [
+            "base64:type254:QURBUFRBVElPTiBIT0xFUw==",
+            0.15
+          ],
+          [
+            "base64:type254:QUZGQUlSIFBSRUpVRElDRQ==",
+            0.2
+          ],
+          [
+            "base64:type254:QUZSSUNBTiBFR0c=",
+            0.25
+          ],
+          [
+            "base64:type254:QUdFTlQgVFJVTUFO",
+            0.3
+          ],
+          [
+            "base64:type254:QUlSUExBTkUgU0lFUlJB",
+            0.35
+          ],
+          [
+            "base64:type254:QUlSUE9SVCBQT0xMT0NL",
+            0.4
+          ],
+          [
+            "base64:type254:QUxBQkFNQSBERVZJTA==",
+            0.45
+          ],
+          [
+            "base64:type254:QUxBRERJTiBDQUxFTkRBUg==",
+            0.5
+          ],
+          [
+            "base64:type254:QUxBTU8gVklERU9UQVBF",
+            0.55
+          ],
+          [
+            "base64:type254:QUxBU0tBIFBIQU5UT00=",
+            0.6
+          ],
+          [
+            "base64:type254:QUxJIEZPUkVWRVI=",
+            0.65
+          ],
+          [
+            "base64:type254:QUxJQ0UgRkFOVEFTSUE=",
+            0.7
+          ],
+          [
+            "base64:type254:QUxJRU4gQ0VOVEVS",
+            0.75
+          ],
+          [
+            "base64:type254:QUxMRVkgRVZPTFVUSU9O",
+            0.8
+          ],
+          [
+            "base64:type254:QUxPTkUgVFJJUA==",
+            0.85
+          ],
+          [
+            "base64:type254:QUxURVIgVklDVE9SWQ==",
+            0.9
+          ],
+          [
+            "base64:type254:QU1BREVVUyBIT0xZ",
+            0.95
+          ],
+          [
+            "base64:type254:QU1FTElFIEhFTExGSUdIVEVSUw==",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.864890",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "film_actor": {
+      "actor_id": {
+        "buckets": [
+          [
+            1,
+            0.075
+          ],
+          [
+            2,
+            0.125
+          ],
+          [
+            3,
+            0.175
+          ],
+          [
+            4,
+            0.225
+          ],
+          [
+            5,
+            0.275
+          ],
+          [
+            6,
+            0.325
+          ],
+          [
+            7,
+            0.375
+          ],
+          [
+            8,
+            0.425
+          ],
+          [
+            9,
+            0.475
+          ],
+          [
+            10,
+            0.525
+          ],
+          [
+            11,
+            0.575
+          ],
+          [
+            12,
+            0.625
+          ],
+          [
+            13,
+            0.675
+          ],
+          [
+            14,
+            0.725
+          ],
+          [
+            15,
+            0.775
+          ],
+          [
+            16,
+            0.825
+          ],
+          [
+            17,
+            0.875
+          ],
+          [
+            18,
+            0.925
+          ],
+          [
+            19,
+            0.975
+          ],
+          [
+            20,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.868087",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "film_id": {
+        "buckets": [
+          [
+            1,
+            0.075
+          ],
+          [
+            2,
+            0.125
+          ],
+          [
+            3,
+            0.175
+          ],
+          [
+            4,
+            0.225
+          ],
+          [
+            5,
+            0.275
+          ],
+          [
+            6,
+            0.325
+          ],
+          [
+            7,
+            0.375
+          ],
+          [
+            8,
+            0.425
+          ],
+          [
+            9,
+            0.475
+          ],
+          [
+            10,
+            0.525
+          ],
+          [
+            11,
+            0.575
+          ],
+          [
+            12,
+            0.625
+          ],
+          [
+            13,
+            0.675
+          ],
+          [
+            14,
+            0.725
+          ],
+          [
+            15,
+            0.775
+          ],
+          [
+            16,
+            0.825
+          ],
+          [
+            17,
+            0.875
+          ],
+          [
+            18,
+            0.925
+          ],
+          [
+            19,
+            0.975
+          ],
+          [
+            20,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.868184",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "film_category": {
+      "category_id": {
+        "buckets": [
+          [
+            1,
+            0.05
+          ],
+          [
+            2,
+            0.1
+          ],
+          [
+            3,
+            0.15
+          ],
+          [
+            4,
+            0.2
+          ],
+          [
+            5,
+            0.3
+          ],
+          [
+            6,
+            0.4
+          ],
+          [
+            8,
+            0.45
+          ],
+          [
+            9,
+            0.65
+          ],
+          [
+            11,
+            0.85
+          ],
+          [
+            12,
+            0.9
+          ],
+          [
+            14,
+            0.95
+          ],
+          [
+            15,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.869953",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "film_id": {
+        "buckets": [
+          [
+            1,
+            0.05
+          ],
+          [
+            2,
+            0.1
+          ],
+          [
+            3,
+            0.15
+          ],
+          [
+            4,
+            0.2
+          ],
+          [
+            5,
+            0.25
+          ],
+          [
+            6,
+            0.3
+          ],
+          [
+            7,
+            0.35
+          ],
+          [
+            8,
+            0.4
+          ],
+          [
+            9,
+            0.45
+          ],
+          [
+            10,
+            0.5
+          ],
+          [
+            11,
+            0.55
+          ],
+          [
+            12,
+            0.6
+          ],
+          [
+            13,
+            0.65
+          ],
+          [
+            14,
+            0.7
+          ],
+          [
+            15,
+            0.75
+          ],
+          [
+            16,
+            0.8
+          ],
+          [
+            17,
+            0.85
+          ],
+          [
+            18,
+            0.9
+          ],
+          [
+            19,
+            0.95
+          ],
+          [
+            20,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.870025",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "inventory": {
+      "film_id": {
+        "buckets": [
+          [
+            1,
+            0.075
+          ],
+          [
+            2,
+            0.125
+          ],
+          [
+            3,
+            0.175
+          ],
+          [
+            4,
+            0.225
+          ],
+          [
+            5,
+            0.275
+          ],
+          [
+            6,
+            0.325
+          ],
+          [
+            7,
+            0.375
+          ],
+          [
+            8,
+            0.425
+          ],
+          [
+            9,
+            0.475
+          ],
+          [
+            10,
+            0.525
+          ],
+          [
+            11,
+            0.575
+          ],
+          [
+            12,
+            0.625
+          ],
+          [
+            13,
+            0.675
+          ],
+          [
+            14,
+            0.725
+          ],
+          [
+            15,
+            0.775
+          ],
+          [
+            16,
+            0.825
+          ],
+          [
+            17,
+            0.875
+          ],
+          [
+            18,
+            0.925
+          ],
+          [
+            19,
+            0.975
+          ],
+          [
+            20,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.871904",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "store_id": {
+        "buckets": [
+          [
+            1,
+            0.525
+          ],
+          [
+            2,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.871982",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "language": {
+      "name": {
+        "buckets": [
+          [
+            "base64:type254:RW5nbGlzaA==",
+            0.16666666666666666
+          ],
+          [
+            "base64:type254:RnJlbmNo",
+            0.3333333333333333
+          ],
+          [
+            "base64:type254:R2VybWFu",
+            0.5
+          ],
+          [
+            "base64:type254:SXRhbGlhbg==",
+            0.6666666666666666
+          ],
+          [
+            "base64:type254:SmFwYW5lc2U=",
+            0.8333333333333334
+          ],
+          [
+            "base64:type254:U3BhbmlzaA==",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.873342",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "payment": {
+      "amount": {
+        "buckets": [
+          [
+            0.99,
+            0.23333333333333334
+          ],
+          [
+            1.99,
+            0.26666666666666666
+          ],
+          [
+            2.99,
+            0.5333333333333333
+          ],
+          [
+            3.99,
+            0.5666666666666667
+          ],
+          [
+            4.99,
+            0.8
+          ],
+          [
+            5.99,
+            0.9
+          ],
+          [
+            6.99,
+            0.9333333333333333
+          ],
+          [
+            7.99,
+            0.9666666666666667
+          ],
+          [
+            9.99,
+            1.0
+          ]
+        ],
+        "data-type": "decimal",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.874945",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "customer_id": {
+        "buckets": [
+          [
+            1,
+            0.06666666666666667
+          ],
+          [
+            2,
+            0.13333333333333333
+          ],
+          [
+            3,
+            0.2
+          ],
+          [
+            4,
+            0.26666666666666666
+          ],
+          [
+            5,
+            0.3333333333333333
+          ],
+          [
+            6,
+            0.4
+          ],
+          [
+            7,
+            0.4666666666666667
+          ],
+          [
+            8,
+            0.5333333333333333
+          ],
+          [
+            9,
+            0.6
+          ],
+          [
+            10,
+            0.6666666666666666
+          ],
+          [
+            11,
+            0.7333333333333333
+          ],
+          [
+            12,
+            0.8
+          ],
+          [
+            13,
+            0.8666666666666667
+          ],
+          [
+            14,
+            0.9333333333333333
+          ],
+          [
+            15,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.875017",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "payment_date": {
+        "buckets": [
+          [
+            "2005-05-25 11:30:37.000000",
+            0.03333333333333333
+          ],
+          [
+            "2005-05-26 01:28:33.000000",
+            0.06666666666666667
+          ],
+          [
+            "2005-05-26 02:40:45.000000",
+            0.1
+          ],
+          [
+            "2005-05-26 03:46:26.000000",
+            0.13333333333333333
+          ],
+          [
+            "2005-05-26 05:50:57.000000",
+            0.16666666666666666
+          ],
+          [
+            "2005-05-26 23:12:47.000000",
+            0.2
+          ],
+          [
+            "2005-05-26 23:31:46.000000",
+            0.23333333333333334
+          ],
+          [
+            "2005-05-27 00:09:24.000000",
+            0.26666666666666666
+          ],
+          [
+            "2005-05-27 00:19:29.000000",
+            0.3
+          ],
+          [
+            "2005-05-27 01:46:33.000000",
+            0.3333333333333333
+          ],
+          [
+            "2005-05-27 03:07:10.000000",
+            0.36666666666666664
+          ],
+          [
+            "2005-05-27 21:10:37.000000",
+            0.4
+          ],
+          [
+            "2005-05-28 00:11:44.000000",
+            0.43333333333333335
+          ],
+          [
+            "2005-05-28 02:32:38.000000",
+            0.4666666666666667
+          ],
+          [
+            "2005-05-28 04:19:32.000000",
+            0.5
+          ],
+          [
+            "2005-05-28 06:41:58.000000",
+            0.5333333333333333
+          ],
+          [
+            "2005-05-28 06:57:59.000000",
+            0.5666666666666667
+          ],
+          [
+            "2005-05-28 07:32:51.000000",
+            0.6
+          ],
+          [
+            "2005-05-28 10:35:23.000000",
+            0.6333333333333333
+          ],
+          [
+            "2005-05-29 02:08:54.000000",
+            0.6666666666666666
+          ],
+          [
+            "2005-05-29 05:07:59.000000",
+            0.7
+          ],
+          [
+            "2005-05-29 19:30:42.000000",
+            0.7333333333333333
+          ],
+          [
+            "2005-05-30 07:31:27.000000",
+            0.7666666666666667
+          ],
+          [
+            "2005-05-30 23:45:17.000000",
+            0.8
+          ],
+          [
+            "2005-05-31 00:08:38.000000",
+            0.8333333333333334
+          ],
+          [
+            "2005-05-31 02:53:42.000000",
+            0.8666666666666667
+          ],
+          [
+            "2005-05-31 05:21:32.000000",
+            0.9
+          ],
+          [
+            "2005-05-31 19:10:07.000000",
+            0.9333333333333333
+          ],
+          [
+            "2005-05-31 21:42:09.000000",
+            0.9666666666666667
+          ],
+          [
+            "2005-06-01 22:58:30.000000",
+            1.0
+          ]
+        ],
+        "data-type": "datetime",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.875053",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "rental_id": {
+        "buckets": [
+          [
+            1,
+            0.03333333333333333
+          ],
+          [
+            2,
+            0.06666666666666667
+          ],
+          [
+            3,
+            0.1
+          ],
+          [
+            4,
+            0.13333333333333333
+          ],
+          [
+            5,
+            0.16666666666666666
+          ],
+          [
+            6,
+            0.2
+          ],
+          [
+            7,
+            0.23333333333333334
+          ],
+          [
+            8,
+            0.26666666666666666
+          ],
+          [
+            9,
+            0.3
+          ],
+          [
+            10,
+            0.3333333333333333
+          ],
+          [
+            11,
+            0.36666666666666664
+          ],
+          [
+            12,
+            0.4
+          ],
+          [
+            13,
+            0.43333333333333335
+          ],
+          [
+            14,
+            0.4666666666666667
+          ],
+          [
+            15,
+            0.5
+          ],
+          [
+            16,
+            0.5333333333333333
+          ],
+          [
+            17,
+            0.5666666666666667
+          ],
+          [
+            18,
+            0.6
+          ],
+          [
+            19,
+            0.6333333333333333
+          ],
+          [
+            20,
+            0.6666666666666666
+          ],
+          [
+            21,
+            0.7
+          ],
+          [
+            22,
+            0.7333333333333333
+          ],
+          [
+            23,
+            0.7666666666666667
+          ],
+          [
+            24,
+            0.8
+          ],
+          [
+            25,
+            0.8333333333333334
+          ],
+          [
+            26,
+            0.8666666666666667
+          ],
+          [
+            27,
+            0.9
+          ],
+          [
+            28,
+            0.9333333333333333
+          ],
+          [
+            29,
+            0.9666666666666667
+          ],
+          [
+            30,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.875109",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "rental": {
+      "customer_id": {
+        "buckets": [
+          [
+            1,
+            0.06666666666666667
+          ],
+          [
+            2,
+            0.13333333333333333
+          ],
+          [
+            3,
+            0.2
+          ],
+          [
+            4,
+            0.26666666666666666
+          ],
+          [
+            5,
+            0.3333333333333333
+          ],
+          [
+            6,
+            0.4
+          ],
+          [
+            7,
+            0.4666666666666667
+          ],
+          [
+            8,
+            0.5333333333333333
+          ],
+          [
+            9,
+            0.6
+          ],
+          [
+            10,
+            0.6666666666666666
+          ],
+          [
+            11,
+            0.7333333333333333
+          ],
+          [
+            12,
+            0.8
+          ],
+          [
+            13,
+            0.8666666666666667
+          ],
+          [
+            14,
+            0.9333333333333333
+          ],
+          [
+            15,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.877077",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "inventory_id": {
+        "buckets": [
+          [
+            1,
+            0.03333333333333333
+          ],
+          [
+            2,
+            0.06666666666666667
+          ],
+          [
+            3,
+            0.1
+          ],
+          [
+            4,
+            0.13333333333333333
+          ],
+          [
+            5,
+            0.16666666666666666
+          ],
+          [
+            6,
+            0.2
+          ],
+          [
+            7,
+            0.23333333333333334
+          ],
+          [
+            8,
+            0.26666666666666666
+          ],
+          [
+            9,
+            0.3
+          ],
+          [
+            10,
+            0.3333333333333333
+          ],
+          [
+            11,
+            0.36666666666666664
+          ],
+          [
+            12,
+            0.4
+          ],
+          [
+            13,
+            0.43333333333333335
+          ],
+          [
+            14,
+            0.4666666666666667
+          ],
+          [
+            15,
+            0.5
+          ],
+          [
+            16,
+            0.5333333333333333
+          ],
+          [
+            17,
+            0.5666666666666667
+          ],
+          [
+            18,
+            0.6
+          ],
+          [
+            19,
+            0.6333333333333333
+          ],
+          [
+            20,
+            0.6666666666666666
+          ],
+          [
+            21,
+            0.7
+          ],
+          [
+            22,
+            0.7333333333333333
+          ],
+          [
+            23,
+            0.7666666666666667
+          ],
+          [
+            24,
+            0.8
+          ],
+          [
+            25,
+            0.8333333333333334
+          ],
+          [
+            26,
+            0.8666666666666667
+          ],
+          [
+            27,
+            0.9
+          ],
+          [
+            28,
+            0.9333333333333333
+          ],
+          [
+            29,
+            0.9666666666666667
+          ],
+          [
+            30,
+            1.0
+          ]
+        ],
+        "data-type": "int",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.877154",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "rental_date": {
+        "buckets": [
+          [
+            "2005-05-24 22:53:30.000000",
+            0.03333333333333333
+          ],
+          [
+            "2005-05-24 22:54:33.000000",
+            0.06666666666666667
+          ],
+          [
+            "2005-05-24 23:03:39.000000",
+            0.1
+          ],
+          [
+            "2005-05-24 23:04:41.000000",
+            0.13333333333333333
+          ],
+          [
+            "2005-05-24 23:05:21.000000",
+            0.16666666666666666
+          ],
+          [
+            "2005-05-24 23:08:07.000000",
+            0.2
+          ],
+          [
+            "2005-05-24 23:11:53.000000",
+            0.23333333333333334
+          ],
+          [
+            "2005-05-24 23:31:46.000000",
+            0.26666666666666666
+          ],
+          [
+            "2005-05-25 00:00:40.000000",
+            0.3
+          ],
+          [
+            "2005-05-25 00:02:21.000000",
+            0.3333333333333333
+          ],
+          [
+            "2005-05-25 00:09:02.000000",
+            0.36666666666666664
+          ],
+          [
+            "2005-05-25 00:19:27.000000",
+            0.4
+          ],
+          [
+            "2005-05-25 00:22:55.000000",
+            0.43333333333333335
+          ],
+          [
+            "2005-05-25 00:31:15.000000",
+            0.4666666666666667
+          ],
+          [
+            "2005-05-25 00:39:22.000000",
+            0.5
+          ],
+          [
+            "2005-05-25 00:43:11.000000",
+            0.5333333333333333
+          ],
+          [
+            "2005-05-25 01:06:36.000000",
+            0.5666666666666667
+          ],
+          [
+            "2005-05-25 01:10:47.000000",
+            0.6
+          ],
+          [
+            "2005-05-25 01:17:24.000000",
+            0.6333333333333333
+          ],
+          [
+            "2005-05-25 01:48:41.000000",
+            0.6666666666666666
+          ],
+          [
+            "2005-05-25 01:59:46.000000",
+            0.7
+          ],
+          [
+            "2005-05-25 02:19:23.000000",
+            0.7333333333333333
+          ],
+          [
+            "2005-05-25 02:40:21.000000",
+            0.7666666666666667
+          ],
+          [
+            "2005-05-25 02:53:02.000000",
+            0.8
+          ],
+          [
+            "2005-05-25 03:06:12.000000",
+            0.8333333333333334
+          ],
+          [
+            "2005-05-25 03:21:45.000000",
+            0.8666666666666667
+          ],
+          [
+            "2005-05-25 03:36:26.000000",
+            0.9
+          ],
+          [
+            "2005-05-25 03:41:50.000000",
+            0.9333333333333333
+          ],
+          [
+            "2005-05-25 03:42:37.000000",
+            0.9666666666666667
+          ],
+          [
+            "2005-05-25 04:01:32.000000",
+            1.0
+          ]
+        ],
+        "data-type": "datetime",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.877199",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      },
+      "return_date": {
+        "buckets": [
+          [
+            "2005-05-26 02:44:21.000000",
+            0.03333333333333333
+          ],
+          [
+            "2005-05-26 03:42:32.000000",
+            0.06666666666666667
+          ],
+          [
+            "2005-05-26 04:42:11.000000",
+            0.1
+          ],
+          [
+            "2005-05-26 06:52:21.000000",
+            0.13333333333333333
+          ],
+          [
+            "2005-05-26 22:04:30.000000",
+            0.16666666666666666
+          ],
+          [
+            "2005-05-27 00:10:15.000000",
+            0.2
+          ],
+          [
+            "2005-05-27 00:43:46.000000",
+            0.23333333333333334
+          ],
+          [
+            "2005-05-27 01:32:07.000000",
+            0.26666666666666666
+          ],
+          [
+            "2005-05-27 01:43:39.000000",
+            0.3
+          ],
+          [
+            "2005-05-27 02:43:41.000000",
+            0.3333333333333333
+          ],
+          [
+            "2005-05-27 04:11:47.000000",
+            0.36666666666666664
+          ],
+          [
+            "2005-05-27 22:09:37.000000",
+            0.4
+          ],
+          [
+            "2005-05-28 01:26:53.000000",
+            0.43333333333333335
+          ],
+          [
+            "2005-05-28 03:33:27.000000",
+            0.4666666666666667
+          ],
+          [
+            "2005-05-28 05:21:02.000000",
+            0.5
+          ],
+          [
+            "2005-05-28 07:30:36.000000",
+            0.5333333333333333
+          ],
+          [
+            "2005-05-28 07:58:26.000000",
+            0.5666666666666667
+          ],
+          [
+            "2005-05-28 08:34:24.000000",
+            0.6
+          ],
+          [
+            "2005-05-28 19:40:33.000000",
+            0.6333333333333333
+          ],
+          [
+            "2005-05-29 03:05:45.000000",
+            0.6666666666666666
+          ],
+          [
+            "2005-05-29 06:07:46.000000",
+            0.7
+          ],
+          [
+            "2005-05-29 20:34:41.000000",
+            0.7333333333333333
+          ],
+          [
+            "2005-05-30 08:32:12.000000",
+            0.7666666666666667
+          ],
+          [
+            "2005-05-31 00:46:50.000000",
+            0.8
+          ],
+          [
+            "2005-05-31 01:02:23.000000",
+            0.8333333333333334
+          ],
+          [
+            "2005-05-31 03:27:22.000000",
+            0.8666666666666667
+          ],
+          [
+            "2005-05-31 06:32:55.000000",
+            0.9
+          ],
+          [
+            "2005-05-31 19:47:21.000000",
+            0.9333333333333333
+          ],
+          [
+            "2005-05-31 22:17:40.000000",
+            0.9666666666666667
+          ],
+          [
+            "2005-06-01 23:58:02.000000",
+            1.0
+          ]
+        ],
+        "data-type": "datetime",
+        "null-values": 0.0,
+        "collation-id": 8,
+        "last-updated": "2026-07-12 12:23:21.877243",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    },
+    "store": {
+      "address": {
+        "buckets": [
+          [
+            "base64:type254:MTIzIE1haW4gU3Q=",
+            0.5
+          ],
+          [
+            "base64:type254:NDU2IE9hayBBdmU=",
+            1.0
+          ]
+        ],
+        "data-type": "string",
+        "null-values": 0.0,
+        "collation-id": 255,
+        "last-updated": "2026-07-12 12:23:21.878678",
+        "sampling-rate": 1.0,
+        "histogram-type": "singleton",
+        "number-of-buckets-specified": 100
+      }
+    }
+  }
+}

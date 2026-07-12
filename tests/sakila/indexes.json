@@ -1,0 +1,211 @@
+{
+  "schema_name": "datagenx_test_src",
+  "tables": {
+    "actor": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "actor_id",
+        "non_unique": 0,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      }
+    ],
+    "category": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "category_id",
+        "non_unique": 0,
+        "cardinality": 16,
+        "index_type": "BTREE"
+      }
+    ],
+    "customer": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "customer_id",
+        "non_unique": 0,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "store_id",
+        "seq_in_index": 1,
+        "column_name": "store_id",
+        "non_unique": 1,
+        "cardinality": 2,
+        "index_type": "BTREE"
+      }
+    ],
+    "film": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "film_id",
+        "non_unique": 0,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "language_id",
+        "seq_in_index": 1,
+        "column_name": "language_id",
+        "non_unique": 1,
+        "cardinality": 1,
+        "index_type": "BTREE"
+      }
+    ],
+    "film_actor": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "actor_id",
+        "non_unique": 0,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 2,
+        "column_name": "film_id",
+        "non_unique": 0,
+        "cardinality": 40,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "film_id",
+        "seq_in_index": 1,
+        "column_name": "film_id",
+        "non_unique": 1,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      }
+    ],
+    "film_category": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "film_id",
+        "non_unique": 0,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 2,
+        "column_name": "category_id",
+        "non_unique": 0,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "category_id",
+        "seq_in_index": 1,
+        "column_name": "category_id",
+        "non_unique": 1,
+        "cardinality": 12,
+        "index_type": "BTREE"
+      }
+    ],
+    "inventory": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "inventory_id",
+        "non_unique": 0,
+        "cardinality": 40,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "film_id",
+        "seq_in_index": 1,
+        "column_name": "film_id",
+        "non_unique": 1,
+        "cardinality": 20,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "store_id",
+        "seq_in_index": 1,
+        "column_name": "store_id",
+        "non_unique": 1,
+        "cardinality": 2,
+        "index_type": "BTREE"
+      }
+    ],
+    "language": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "language_id",
+        "non_unique": 0,
+        "cardinality": 6,
+        "index_type": "BTREE"
+      }
+    ],
+    "payment": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "payment_id",
+        "non_unique": 0,
+        "cardinality": 30,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "customer_id",
+        "seq_in_index": 1,
+        "column_name": "customer_id",
+        "non_unique": 1,
+        "cardinality": 15,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "rental_id",
+        "seq_in_index": 1,
+        "column_name": "rental_id",
+        "non_unique": 1,
+        "cardinality": 30,
+        "index_type": "BTREE"
+      }
+    ],
+    "rental": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "rental_id",
+        "non_unique": 0,
+        "cardinality": 30,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "inventory_id",
+        "seq_in_index": 1,
+        "column_name": "inventory_id",
+        "non_unique": 1,
+        "cardinality": 30,
+        "index_type": "BTREE"
+      },
+      {
+        "key_name": "customer_id",
+        "seq_in_index": 1,
+        "column_name": "customer_id",
+        "non_unique": 1,
+        "cardinality": 15,
+        "index_type": "BTREE"
+      }
+    ],
+    "store": [
+      {
+        "key_name": "PRIMARY",
+        "seq_in_index": 1,
+        "column_name": "store_id",
+        "non_unique": 0,
+        "cardinality": 2,
+        "index_type": "BTREE"
+      }
+    ]
+  }
+}

@@ -1,0 +1,270 @@
+{
+  "schema_name": "datagenx_test_src",
+  "tables": {
+    "actor": {
+      "row_count": 20,
+      "columns": {
+        "actor_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        },
+        "first_name": {
+          "distinct_count": 20,
+          "min": "BETTE",
+          "max": "ZERO"
+        },
+        "last_name": {
+          "distinct_count": 20,
+          "min": "BERGEN",
+          "max": "WOOD"
+        }
+      }
+    },
+    "category": {
+      "row_count": 16,
+      "columns": {
+        "category_id": {
+          "distinct_count": 16,
+          "min": 1,
+          "max": 16
+        },
+        "name": {
+          "distinct_count": 16,
+          "min": "Action",
+          "max": "Travel"
+        }
+      }
+    },
+    "customer": {
+      "row_count": 20,
+      "columns": {
+        "customer_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        },
+        "store_id": {
+          "distinct_count": 2,
+          "min": 1,
+          "max": 2
+        },
+        "first_name": {
+          "distinct_count": 20,
+          "min": "BARBARA",
+          "max": "SUSAN"
+        },
+        "last_name": {
+          "distinct_count": 20,
+          "min": "ANDERSON",
+          "max": "WILSON"
+        },
+        "email": {
+          "distinct_count": 20,
+          "min": "barbara@test.com",
+          "max": "susan@test.com"
+        },
+        "active": {
+          "distinct_count": 2,
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    "film": {
+      "row_count": 20,
+      "columns": {
+        "film_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        },
+        "title": {
+          "distinct_count": 20,
+          "min": "ACADEMY DINOSAUR",
+          "max": "AMELIE HELLFIGHTERS"
+        },
+        "description": {
+          "distinct_count": 18,
+          "min": null,
+          "max": null
+        },
+        "release_year": {
+          "distinct_count": 1,
+          "min": 2006,
+          "max": 2006
+        },
+        "language_id": {
+          "distinct_count": 1,
+          "min": 1,
+          "max": 1
+        },
+        "rental_duration": {
+          "distinct_count": 5,
+          "min": 3,
+          "max": 7
+        },
+        "rental_rate": {
+          "distinct_count": 3,
+          "min": "0.99",
+          "max": "4.99"
+        },
+        "length": {
+          "distinct_count": 20,
+          "min": 46,
+          "max": 180
+        },
+        "replacement_cost": {
+          "distinct_count": 14,
+          "min": "12.99",
+          "max": "28.99"
+        },
+        "rating": {
+          "distinct_count": 5,
+          "min": null,
+          "max": null
+        }
+      }
+    },
+    "film_actor": {
+      "row_count": 40,
+      "columns": {
+        "actor_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        },
+        "film_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        }
+      }
+    },
+    "film_category": {
+      "row_count": 20,
+      "columns": {
+        "film_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        },
+        "category_id": {
+          "distinct_count": 12,
+          "min": 1,
+          "max": 15
+        }
+      }
+    },
+    "inventory": {
+      "row_count": 40,
+      "columns": {
+        "inventory_id": {
+          "distinct_count": 40,
+          "min": 1,
+          "max": 40
+        },
+        "film_id": {
+          "distinct_count": 20,
+          "min": 1,
+          "max": 20
+        },
+        "store_id": {
+          "distinct_count": 2,
+          "min": 1,
+          "max": 2
+        }
+      }
+    },
+    "language": {
+      "row_count": 6,
+      "columns": {
+        "language_id": {
+          "distinct_count": 6,
+          "min": 1,
+          "max": 6
+        },
+        "name": {
+          "distinct_count": 6,
+          "min": "English",
+          "max": "Spanish"
+        }
+      }
+    },
+    "payment": {
+      "row_count": 30,
+      "columns": {
+        "payment_id": {
+          "distinct_count": 30,
+          "min": 1,
+          "max": 30
+        },
+        "customer_id": {
+          "distinct_count": 15,
+          "min": 1,
+          "max": 15
+        },
+        "rental_id": {
+          "distinct_count": 30,
+          "min": 1,
+          "max": 30
+        },
+        "amount": {
+          "distinct_count": 9,
+          "min": "0.99",
+          "max": "9.99"
+        },
+        "payment_date": {
+          "distinct_count": 30,
+          "min": "2005-05-25 11:30:37",
+          "max": "2005-06-01 22:58:30"
+        }
+      }
+    },
+    "rental": {
+      "row_count": 30,
+      "columns": {
+        "rental_id": {
+          "distinct_count": 30,
+          "min": 1,
+          "max": 30
+        },
+        "rental_date": {
+          "distinct_count": 30,
+          "min": "2005-05-24 22:53:30",
+          "max": "2005-05-25 04:01:32"
+        },
+        "inventory_id": {
+          "distinct_count": 30,
+          "min": 1,
+          "max": 30
+        },
+        "customer_id": {
+          "distinct_count": 15,
+          "min": 1,
+          "max": 15
+        },
+        "return_date": {
+          "distinct_count": 30,
+          "min": "2005-05-26 02:44:21",
+          "max": "2005-06-01 23:58:02"
+        }
+      }
+    },
+    "store": {
+      "row_count": 2,
+      "columns": {
+        "store_id": {
+          "distinct_count": 2,
+          "min": 1,
+          "max": 2
+        },
+        "address": {
+          "distinct_count": 2,
+          "min": "123 Main St",
+          "max": "456 Oak Ave"
+        }
+      }
+    }
+  }
+}
