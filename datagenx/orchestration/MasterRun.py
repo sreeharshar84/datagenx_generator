@@ -63,7 +63,7 @@ from config import (
     HOST, USER, PASSWORD,
     SOURCE_SCHEMA, TARGET_SCHEMA, DB_TYPE, DB_PORT,
     DBGEN_BINARY, DBGEN_FILES_DIR, DBGEN_TMP_OUT_DIR,
-    FILES_COUNT, ROWS_COUNT
+    FILES_COUNT, ROWS_COUNT, FK_DDL_FILE
 )
 
 
@@ -128,7 +128,40 @@ def _is_tidb_memory_limit_error(exc):
 
 
 def _analyze_target_table(cursor, table):
-    analyze_suffix = " ALL COLUMNS" if DB_TYPE == 'tidb' else ""
+    if DB_TYPE == 'tidb':
+        analyze_suffix = " ALL COLUMNS"
+    elif DB_TYPE == 'singlestore':
+        # Align with MySQL: don't create histograms for PK columns.
+        # MySQL never auto-creates PK histograms; optimizer uses NDV not shape for PKs.
+        try:
+            cursor.execute("""
+                SELECT c.COLUMN_NAME
+                FROM information_schema.COLUMNS c
+                WHERE c.TABLE_SCHEMA = %s AND c.TABLE_NAME = %s
+                  AND c.DATA_TYPE IN ('int','bigint','smallint','tinyint','mediumint',
+                                      'decimal','numeric','float','double',
+                                      'date','datetime','timestamp','time','year')
+                  AND c.COLUMN_NAME NOT IN (
+                      SELECT k.COLUMN_NAME
+                      FROM information_schema.KEY_COLUMN_USAGE k
+                      WHERE k.TABLE_SCHEMA = %s AND k.TABLE_NAME = %s
+                        AND k.CONSTRAINT_NAME IN ('PRIMARY', 'pk')
+                  )
+            """, (TARGET_SCHEMA, table, TARGET_SCHEMA, table))
+            cols = [r[0] for r in cursor.fetchall()]
+            if cols:
+                col_list = ", ".join(f"`{c}`" for c in cols)
+                cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}` COLUMNS {col_list} ENABLE")
+                cursor.fetchall()
+            else:
+                cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}`")
+                cursor.fetchall()
+        except Error:
+            cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}`")
+            cursor.fetchall()
+        return
+    else:
+        analyze_suffix = ""
     try:
         cursor.execute(f"ANALYZE TABLE `{TARGET_SCHEMA}`.`{table}`{analyze_suffix}")
         cursor.fetchall()
@@ -266,7 +299,7 @@ def _apply_tidb_exact_frequency_histogram_fallback(cursor, table, hist_results, 
     per-value frequency distribution is identical.  For low-NDV columns, compare
     only grouped counts, never source literals.
     """
-    if DB_TYPE != "tidb":
+    if DB_TYPE not in ("tidb", "singlestore"):
         return hist_results
 
     max_distinct = int(os.environ.get("DATAGENX_HISTOGRAM_EXACT_SHAPE_MAX_DISTINCT", "2000000"))
@@ -285,7 +318,7 @@ def _apply_tidb_exact_frequency_histogram_fallback(cursor, table, hist_results, 
             adjusted.append((
                 col,
                 unique_diff,
-                f"{reason}; exact unique cardinality diff = {unique_diff:.5f} (TiDB bucket fallback)",
+                f"{reason}; exact unique cardinality diff = {unique_diff:.5f} (bucket fallback)",
             ))
             continue
 
@@ -311,7 +344,7 @@ def _apply_tidb_exact_frequency_histogram_fallback(cursor, table, hist_results, 
             adjusted.append((
                 col,
                 exact_diff,
-                f"{reason}; exact frequency shape diff = {exact_diff:.5f} (TiDB bucket fallback)",
+                f"{reason}; exact frequency shape diff = {exact_diff:.5f} (bucket fallback)",
             ))
         else:
             adjusted.append((col, diff, reason))
@@ -385,6 +418,28 @@ def add_benchmark_fk_fallback_dependencies(cursor, database, all_tables, depende
         fallback_candidates.extend(TPCH_FK_FALLBACKS)
     if {"date_dim", "item", "customer", "store_sales"}.issubset(lower_tables):
         fallback_candidates.extend(TPCDS_FK_FALLBACKS)
+
+    # Also add dependencies from FK_DDL_FILE if provided
+    if FK_DDL_FILE:
+        import os
+        import re as _re
+        if os.path.exists(FK_DDL_FILE):
+            with open(FK_DDL_FILE) as f:
+                content = f.read()
+            content = _re.sub(r'--.*$', '', content, flags=_re.MULTILINE)
+            pattern = _re.compile(
+                r'alter\s+table\s+(\w+)\s+add\s+constraint\s+(\w+)\s+foreign\s+key\s*\(([^)]+)\)\s*references\s+(\w+)\s*\(([^)]+)\)',
+                _re.IGNORECASE
+            )
+            for m in pattern.finditer(content):
+                child_table = m.group(1).lower()
+                parent_table = m.group(4).lower()
+                child_cols = tuple(c.strip() for c in m.group(3).split(","))
+                parent_cols = tuple(c.strip() for c in m.group(5).split(","))
+                if child_table in lower_tables and parent_table in lower_tables:
+                    fallback_candidates.append(
+                        (m.group(2), child_table, parent_table, child_cols, parent_cols)
+                    )
 
     added = 0
     if fallback_candidates:
@@ -780,6 +835,31 @@ def build_fk_appendages(cursor, table, extractor=None):
             ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
         """, (SOURCE_SCHEMA, table_name))
         rows = cursor.fetchall()
+        if not rows and extractor:
+            # Try extractor's get_foreign_keys (uses FK_DDL_FILE for SingleStore)
+            fk_map = extractor.get_foreign_keys(table_name)
+            if fk_map:
+                from collections import defaultdict as _ddict
+                ref_groups = _ddict(list)
+                for col, (ref_table, ref_col) in fk_map.items():
+                    ref_groups[ref_table].append((col, ref_col))
+                rows = []
+                for ref_table, cols in ref_groups.items():
+                    if len(cols) > 1:
+                        ref_pk = extractor.get_primary_keys(ref_table)
+                        if len(ref_pk) > 1:
+                            constraint_name = f"fk_{table_name}_{ref_table}"
+                            for col, ref_col in cols:
+                                rows.append((constraint_name, col, ref_table, ref_col))
+                        else:
+                            for col, ref_col in cols:
+                                rows.append((f"fk_{table_name}_{col}", col, ref_table, ref_col))
+                    else:
+                        col, ref_col = cols[0]
+                        rows.append((f"fk_{table_name}_{col}", col, ref_table, ref_col))
+                if rows and table_name == table:
+                    print(f"      Using {len(set(row[0] for row in rows))} FK relationship(s) from --fk-ddl")
+                return rows
         if not rows:
             rows = fallback_fk_rows(table_name)
             if rows and table_name == table:
@@ -2563,6 +2643,8 @@ if __name__ == "__main__":
     parser.add_argument("--target-schema", help="Target schema name (overrides config.py)")
     parser.add_argument("--rows", type=str, help="Number of rows to generate (overrides config.py)")
     parser.add_argument("--tables", type=str, help="Comma-separated list of tables to process (default: all tables)")
+    parser.add_argument("--fk-ddl", type=str, help="Path to FK DDL file (ALTER TABLE ... FOREIGN KEY statements). "
+                        "Required for databases that don't expose FK metadata (e.g., SingleStore).")
 
     args = parser.parse_args()
     VERBOSE = args.verbose
@@ -2589,5 +2671,7 @@ if __name__ == "__main__":
         ROWS_OVERRIDE = True
     if args.tables:
         TABLES_FILTER = args.tables
+    if args.fk_ddl:
+        FK_DDL_FILE = args.fk_ddl
 
     main()

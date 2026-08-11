@@ -127,6 +127,77 @@ def _temporal_ndv_expression(col_type, distinct_count):
     return None
 
 
+def _temporal_weighted_expression(col_type, histogram, total_distinct, total_rows):
+    """Generate a weighted CASE temporal expression preserving histogram shape.
+
+    Uses bucket cardinalities as weights to distribute rows non-uniformly,
+    matching the source's histogram distribution shape.
+    """
+    buckets = histogram.get("buckets", [])
+    if not buckets or len(buckets) < 2:
+        return None
+    total_rows = _positive_int(total_rows)
+    if not total_rows:
+        return None
+
+    # Each bucket has [lo, hi, cum_freq, num_distinct]
+    # Filter out empty buckets (cardinality=0, SingleStore uses these as gap markers)
+    prev_cum_freq = 0.0
+    active_buckets = []
+    for bucket in buckets:
+        if len(bucket) < 4:
+            continue
+        lo, hi, cum_freq, num_distinct = bucket[0], bucket[1], float(bucket[2]), int(bucket[3])
+        bucket_freq = cum_freq - prev_cum_freq
+        prev_cum_freq = cum_freq
+        # Skip empty gap buckets
+        if num_distinct <= 0 or bucket_freq <= 0:
+            continue
+        active_buckets.append((lo, hi, bucket_freq, num_distinct))
+
+    if not active_buckets:
+        return None
+
+    # Calculate total non-NULL rows from bucket frequencies
+    total_bucket_freq = sum(bf for _, _, bf, _ in active_buckets)
+    non_null_rows = round(total_bucket_freq * total_rows) if total_bucket_freq < 0.999 else total_rows
+
+    # Build CASE expression
+    case_lines = []
+    cumulative_rows = 0
+    synthetic_offset = 0
+
+    for lo, hi, bucket_freq, num_distinct in active_buckets:
+        # Number of rows in this bucket (proportional to frequency)
+        bucket_rows = max(1, round((bucket_freq / total_bucket_freq) * non_null_rows))
+        cumulative_rows += bucket_rows
+
+        # Within this bucket, cycle through num_distinct values
+        if col_type == "date":
+            expr = f"TIMESTAMP '{SYNTHETIC_BASE_DATETIME}' + INTERVAL ({synthetic_offset}+mod(rownum-1, {num_distinct})) DAY"
+        elif col_type in ("datetime", "timestamp"):
+            expr = f"TIMESTAMP '{SYNTHETIC_BASE_DATETIME}' + INTERVAL ({synthetic_offset}+mod(rownum-1, {num_distinct})) SECOND"
+        elif col_type == "time":
+            expr = f"INTERVAL ({synthetic_offset}+mod(rownum-1, {num_distinct})) SECOND"
+        else:
+            return None
+
+        case_lines.append(f"when rownum <= {cumulative_rows} then {expr}")
+        synthetic_offset += num_distinct
+
+    if not case_lines:
+        return None
+
+    # If source has NULLs (total_bucket_freq < 1.0), remaining rows should be NULL
+    if total_bucket_freq < 0.999:
+        else_value = "NULL"
+    else:
+        last_expr = case_lines[-1].split(" then ")[1]
+        else_value = last_expr
+
+    return f"case\n    {' '.join(case_lines)}\n    else {else_value}\n    end"
+
+
 def _year_ndv_expression(distinct_count):
     distinct_count = _positive_int(distinct_count)
     if not distinct_count:
@@ -180,7 +251,10 @@ def _frequency_shape_expression(groups, distinct_count, row_count):
 
     total_distinct = sum(value_count for _frequency, value_count in groups)
     total_rows = sum(frequency * value_count for frequency, value_count in groups)
-    if total_distinct != distinct_count or total_rows != row_count:
+    if total_distinct != distinct_count:
+        return None
+    # Allow total_rows <= row_count (difference = NULL rows in source)
+    if total_rows > row_count:
         return None
 
     case_lines = []
@@ -194,9 +268,15 @@ def _frequency_shape_expression(groups, distinct_count, row_count):
         case_lines.append(f"when rownum <= {cumulative_rows} then {expression}")
         ordinal_offset += value_count
 
+    # If source has NULLs (total_rows < row_count), remaining rows are NULL
+    if total_rows < row_count:
+        else_value = "NULL"
+    else:
+        else_value = str(distinct_count)
+
     return f"""case
     {' '.join(case_lines)}
-    else {distinct_count}
+    else {else_value}
     end"""
 
 
@@ -563,8 +643,16 @@ def annotate_table_with_statistics(extractor, database, table, generated_appenda
                 exact_distinct_cache,
                 prefer_exact=True,
             )
+            # Check if actually all-NULL (cardinality estimate may report 1)
+            if card and card <= 1:
+                real_distinct = extractor.get_distinct_count(table, col)
+                if real_distinct == 0:
+                    card = 0
             col_max_length = get_string_column_length(line)
-            if card and card <= STRING_CARDINALITY_THRESHOLD:
+            if card == 0:
+                # All-NULL column
+                synthetic = "NULL"
+            elif card and card <= STRING_CARDINALITY_THRESHOLD:
                 values = _get_string_value_weights(
                     extractor.cursor, database, table, col, card)
                 synthetic = string_values_to_case(
@@ -596,7 +684,13 @@ def annotate_table_with_statistics(extractor, database, table, generated_appenda
                 exact_distinct_cache,
                 prefer_exact=True,
             )
-            synthetic = _temporal_ndv_expression(col_type, distinct_count) or "rand.u31_timestamp()"
+            # Try histogram-weighted date expression to preserve distribution shape
+            synthetic = None
+            hist = extractor.get_column_histogram(table, col)
+            if hist and hist.get("buckets") and distinct_count and distinct_count > 1:
+                synthetic = _temporal_weighted_expression(col_type, hist, distinct_count, table_row_count)
+            if not synthetic:
+                synthetic = _temporal_ndv_expression(col_type, distinct_count) or "rand.u31_timestamp()"
 
         elif col_type in YEAR:
             distinct_count = _column_distinct_count(
@@ -620,6 +714,13 @@ def annotate_table_with_statistics(extractor, database, table, generated_appenda
                 exact_distinct_cache,
                 prefer_exact=True,
             )
+            # Check if column is actually all-NULL (distinct_count=0 from source)
+            # col_cardinality may report 1 even for all-NULL columns
+            all_null_column = False
+            if actual_distinct and actual_distinct <= 1 and not histogram:
+                real_distinct = extractor.get_distinct_count(table, col)
+                if real_distinct == 0:
+                    all_null_column = True
             frequency_shape = _numeric_frequency_shape_expression(
                 extractor,
                 database,
@@ -640,8 +741,19 @@ def annotate_table_with_statistics(extractor, database, table, generated_appenda
                 )
                 if not synthetic:
                     synthetic = _numeric_ndv_expression(line, actual_distinct)
+                elif actual_distinct:
+                    # Verify generated expression doesn't undercount distinct values.
+                    # SingleStore histogram num_distinct per bucket can sum to less
+                    # than actual distinct count due to estimation.
+                    import re as _re
+                    gen_values = set(_re.findall(r'then (\d+)', synthetic))
+                    if len(gen_values) < actual_distinct * 0.95:
+                        synthetic = _numeric_ndv_expression(line, actual_distinct)
             else:
                 synthetic = _numeric_ndv_expression(line, actual_distinct) or "rand.range(0,5)"
+            # Override: if column is actually all-NULL, generate NULL
+            if all_null_column:
+                synthetic = "NULL"
 
         else:
             synthetic = ""

@@ -575,17 +575,17 @@ def get_histogram_summary(cursor, args, source_schema, target_schema, tables, ro
                         reason = "optimizer histogram buckets diverged; exact unique cardinality fallback"
                 critical_histogram = indexed or not (is_string_type(col_type) or is_decimal_type(col_type))
                 effective_max_distinct = args.histogram_fallback_max_distinct
-                if args.db_type == "tidb" and critical_histogram:
+                if args.db_type in ("tidb", "singlestore") and critical_histogram:
                     effective_max_distinct = max(
                         effective_max_distinct,
-                        args.tidb_histogram_fallback_max_distinct,
+                        getattr(args, 'tidb_histogram_fallback_max_distinct', effective_max_distinct),
                     )
                 allow_frequency_fallback = (
                     max_distinct <= effective_max_distinct
                     and (
                         max_rows <= args.histogram_fallback_max_rows
                         or (
-                            args.db_type == "tidb"
+                            args.db_type in ("tidb", "singlestore")
                             and (not missing_histogram or critical_histogram)
                         )
                     )
@@ -771,18 +771,62 @@ def _fallback_fk_relationships(cursor, source_schema, target_schema):
     return relationships
 
 
-def _fk_relationships(cursor, source_schema, target_schema):
+def _fk_relationships_from_ddl_file(cursor, fk_ddl_file, source_schema, target_schema):
+    """Parse FK relationships from a user-provided FK DDL file."""
+    import os
+    import re as _re
+
+    if not fk_ddl_file or not os.path.exists(fk_ddl_file):
+        return []
+
+    with open(fk_ddl_file) as f:
+        content = f.read()
+
+    content = _re.sub(r'--.*$', '', content, flags=_re.MULTILINE)
+    pattern = _re.compile(
+        r'alter\s+table\s+(\w+)\s+add\s+constraint\s+(\w+)\s+foreign\s+key\s*\(([^)]+)\)\s*references\s+(\w+)\s*\(([^)]+)\)',
+        _re.IGNORECASE
+    )
+
+    # Get tables that exist in either schema
+    source_columns = _schema_columns(cursor, source_schema)
+    target_columns = _schema_columns(cursor, target_schema)
+    existing_tables = set(source_columns) | set(target_columns)
+
+    relationships = []
+    for m in pattern.finditer(content):
+        child_table = m.group(1).lower()
+        child_cols = [c.strip() for c in m.group(3).split(",")]
+        parent_table = m.group(4).lower()
+        parent_cols = [c.strip() for c in m.group(5).split(",")]
+
+        if child_table in existing_tables and parent_table in existing_tables:
+            relationships.append(_relationship(
+                m.group(2), child_table, parent_table, child_cols, parent_cols,
+                definition_source="fk-ddl-file"
+            ))
+
+    return relationships
+
+
+def _fk_relationships(cursor, source_schema, target_schema, fk_ddl_file=None):
     relationships = _physical_fk_relationships(cursor, source_schema)
     if relationships:
         return relationships
     relationships = _physical_fk_relationships(cursor, target_schema)
     if relationships:
         return relationships
+    # Try user-provided FK DDL file before hardcoded fallback
+    if fk_ddl_file:
+        relationships = _fk_relationships_from_ddl_file(
+            cursor, fk_ddl_file, source_schema, target_schema)
+        if relationships:
+            return relationships
     return _fallback_fk_relationships(cursor, source_schema, target_schema)
 
 
-def get_fk_orphans(cursor, source_schema, target_schema):
-    checks = _fk_relationships(cursor, source_schema, target_schema)
+def get_fk_orphans(cursor, source_schema, target_schema, fk_ddl_file=None):
+    checks = _fk_relationships(cursor, source_schema, target_schema, fk_ddl_file=fk_ddl_file)
     rows = []
     for schema_name, label_prefix in ((source_schema, "source"), (target_schema, "target")):
         for check in checks:
@@ -1504,7 +1548,8 @@ def generate_report(args):
             row_df=row_df,
             distinct_df=distinct_df,
         )
-        orphan_df = get_fk_orphans(cursor, args.source_schema, args.target_schema)
+        orphan_df = get_fk_orphans(cursor, args.source_schema, args.target_schema,
+                                    fk_ddl_file=getattr(args, 'fk_ddl', None))
         if args.skip_overlap:
             overlap_df = get_skipped_overlap(
                 tables,
@@ -1635,6 +1680,9 @@ def parse_args():
     parser.add_argument("--source-schema", default=SOURCE_SCHEMA)
     parser.add_argument("--target-schema", default=TARGET_SCHEMA)
     parser.add_argument("--output", default="/tmp/tpch_validation_report.html")
+    parser.add_argument("--fk-ddl", type=str, default=None,
+                        help="Path to FK DDL file (ALTER TABLE ... FOREIGN KEY statements). "
+                             "Used as FK source for databases that don't expose FK metadata.")
     parser.add_argument("--max-frequency-values", type=int, default=100)
     parser.add_argument(
         "--histogram-fallback-max-rows",

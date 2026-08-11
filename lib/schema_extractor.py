@@ -435,6 +435,74 @@ class SingleStoreExtractor(SchemaExtractor):
 
         return set()
 
+    def get_foreign_keys(self, table):
+        """Get foreign key mappings for SingleStore.
+
+        SingleStore doesn't expose FK metadata in INFORMATION_SCHEMA even when
+        FKs are declared in DDL (they are silently discarded with ignore_foreign_keys=1).
+        Falls back to parsing the user-provided FK DDL file (--fk-ddl / FK_DDL_FILE).
+        """
+        result = super().get_foreign_keys(table)
+        if result:
+            return result
+
+        # Fallback: parse from user-provided FK DDL file
+        if not hasattr(self, '_fk_cache'):
+            self._fk_cache = self._load_fk_from_ddl_file()
+
+        return self._fk_cache.get(table.lower(), {})
+
+    def _load_fk_from_ddl_file(self):
+        """Parse FK relationships from user-provided FK DDL file."""
+        import os
+        from config import FK_DDL_FILE
+
+        fk_map = {}  # table -> {col: (ref_table, ref_col)}
+
+        if not FK_DDL_FILE or not os.path.exists(FK_DDL_FILE):
+            return fk_map
+
+        with open(FK_DDL_FILE) as f:
+            content = f.read()
+
+        # Strip SQL comments
+        content = re.sub(r'--.*$', '', content, flags=re.MULTILINE)
+
+        # Parse: ALTER TABLE <child> ... FOREIGN KEY (<cols>) REFERENCES <parent>(<pcols>)
+        pattern = re.compile(
+            r'alter\s+table\s+(\w+)\s+add\s+constraint\s+\w+\s+foreign\s+key\s*\(([^)]+)\)\s*references\s+(\w+)\s*\(([^)]+)\)',
+            re.IGNORECASE
+        )
+        for m in pattern.finditer(content):
+            child_table = m.group(1).lower()
+            child_cols = [c.strip() for c in m.group(2).split(",")]
+            parent_table = m.group(3).lower()
+            parent_cols = [c.strip() for c in m.group(4).split(",")]
+
+            if child_table not in fk_map:
+                fk_map[child_table] = {}
+            for cc, pc in zip(child_cols, parent_cols):
+                fk_map[child_table][cc] = (parent_table, pc)
+
+        return fk_map
+
+    def get_table_histograms(self, table):
+        """Return histograms for all non-PK columns.
+
+        Aligns with MySQL behavior: MySQL never auto-creates histograms for PK
+        columns, so we skip them here to avoid false histogram divergences in
+        validation (PK columns would show as 'missing in target').
+        """
+        pk_cols = self.get_primary_keys(table)
+        histograms = {}
+        for column in self.get_columns(table):
+            if column in pk_cols:
+                continue
+            histogram = self.get_column_histogram(table, column)
+            if histogram:
+                histograms[column] = histogram
+        return histograms
+
     def analyze_table(self, table):
         """Run ANALYZE TABLE to collect statistics."""
         # SingleStore ANALYZE syntax

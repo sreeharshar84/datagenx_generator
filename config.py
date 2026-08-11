@@ -124,6 +124,9 @@ DBGEN_FILES_DIR = _env("DBGEN_FILES_DIR", "DATAGENX_DBGEN_FILES_DIR",
 DBGEN_TMP_OUT_DIR = _env("DBGEN_TMP_OUT_DIR", "DATAGENX_DBGEN_TMP_OUT_DIR",
                          default="generated/dbgen_tmp_out")
 
+# FK DDL file path (for databases that don't expose FK metadata, e.g., SingleStore)
+FK_DDL_FILE = _env("FK_DDL_FILE", "DATAGENX_FK_DDL_FILE", default=None)
+
 # Generation settings
 FILES_COUNT = _env("FILES_COUNT", "DATAGENX_FILES_COUNT", default="1")
 ROWS_COUNT = _env("ROWS_COUNT", "DATAGENX_ROWS_COUNT", default="1000")
