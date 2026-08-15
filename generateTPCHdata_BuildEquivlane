@@ -1,0 +1,72 @@
+### This script generate TPCH data on required scale, default 1 ##
+### Then load this data into TPCH database ##
+### Perform sampling per column level to update histogram stats ## 
+### pattern is "python filename value_of_SF HISTOGRAM_ON_OFF"
+
+import sys
+import subprocess
+
+SF = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+HISTOGRAM = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+
+DB = "tpch"
+USER = ""
+PASSWORD = ""
+HOST = "localhost"
+
+TABLES = [
+    "region", "nation", "supplier", "customer",
+    "part", "partsupp", "orders", "lineitem"
+]
+
+
+def run(cmd):
+    subprocess.run(cmd, shell=True, check=True)
+
+
+# run dbgen to generate dummy data
+print(f"####Now generating TPCH data###")
+run(f"./dbgen -s {SF}")
+
+# truncate table 
+for t in TABLES:
+    print(f"######Truncating {t}#####")
+    run(
+        f"""mysql -h {HOST} -u {USER} -e "TRUNCATE TABLE {DB}.{t};" """
+       )
+
+
+# loading generated data now
+for t in TABLES:
+    print(f"#####loading data for {t}#####")
+    run(
+        f"""mysql --local-infile=1 -h {HOST} -u {USER} {DB} -e "
+        LOAD DATA LOCAL INFILE '{t}.tbl'
+        INTO TABLE {DB}.{t}
+        FIELDS TERMINATED BY '|'
+        LINES TERMINATED BY '\\n';
+        " """
+    )
+
+
+#analyze these table now
+for t in TABLES:
+    print(f"#######Running analyze for {t} ##### ")
+    cols = subprocess.check_output(
+        f"""mysql -N -h {HOST} -u {USER} -e "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = '{DB}' AND table_name = '{t}'; " """,
+        shell=True
+    ).decode().splitlines()
+
+    if not cols:
+        continue
+
+    col_list = ", ".join(cols)
+
+    run(
+        f"""mysql -h {HOST} -u {USER} -e "ANALYZE TABLE {DB}.{t} UPDATE HISTOGRAM ON {col_list} WITH 256 BUCKETS;" """
+       ) 
+
+
+print(f"#### Now running DataGenX####")
+flag = "--compare-histograms" if HISTOGRAM else ""
+run(f"{sys.executable} MasterRun.py --compare-histograms {flag}")
