@@ -1,19 +1,14 @@
 -- TPC-DS Foreign Key Constraints (MySQL syntax)
--- Based on TPC-DS specification v3.0.1 referential relationships.
+-- Based on TPC-DS specification v3.0.1 referential relationships
 --
--- Usage (specify schema on the command line):
---   mysql -u root -p tpcds < scripts/tpcds_fk.sql
---   mysql -u root -p tpcds_sf5 < scripts/tpcds_fk.sql
+-- Usage (specify schema on command line):
+--   mysql -u root tpcds < scripts/tpcds_fk.sql
+--   mysql -u root tpcds_sf5 < scripts/tpcds_fk.sql
 --
 -- Notes:
---   - Run after data is loaded and primary keys are present.
---   - TPC-DS data often uses 0 as an unknown/not-applicable surrogate key.
---     FOREIGN_KEY_CHECKS is disabled while adding constraints so this script can
---     attach relationship metadata to already-loaded benchmark data.
---   - MySQL excludes NULL values from FK checks, but it does not exclude 0.
---   - The local TPC-DS schema uses cr_returned_time_sk and wr_returned_time_sk.
-
-SET FOREIGN_KEY_CHECKS = 0;
+--   - Many FK columns are nullable; NULL values are excluded from FK checks by MySQL
+--   - Composite FKs on returns tables reference the corresponding sales table PKs
+--   - Run AFTER data is loaded
 
 -- ============================================================
 -- DIMENSION TABLE SELF-REFERENCES
@@ -335,5 +330,3 @@ ADD CONSTRAINT INV_FK2 FOREIGN KEY (inv_item_sk) REFERENCES item(i_item_sk);
 
 ALTER TABLE inventory
 ADD CONSTRAINT INV_FK3 FOREIGN KEY (inv_warehouse_sk) REFERENCES warehouse(w_warehouse_sk);
-
-SET FOREIGN_KEY_CHECKS = 1;
